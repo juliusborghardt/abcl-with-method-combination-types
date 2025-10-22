@@ -1,3 +1,14 @@
+This Repository is a modified version of ABCL, that implements Method Combination Types as proposed by Didier Verna in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
+It is part of ongoing work as part of a thesis by Julius Borghardt.
+This repo is work-in-progress. As of 22.10.2025, it does not yet work.
+
+
+
+
+
+
+the README for ABCL can be found below.
+
 Armed Bear Common Lisp (ABCL)
 =============================
 
