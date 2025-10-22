@@ -300,6 +300,11 @@
       (load (do-compile "substitute.lisp"))
       (load (do-compile "clos.lisp"))
       (load (do-compile "mop.lisp"))
+
+      ;; 251022 do the switch here?
+
+
+      
       ;; Order matters for these files.
       (mapc #'do-compile '("collect.lisp"
                            "macros.lisp"
@@ -321,6 +326,12 @@
       (load (do-compile "gray-streams.lisp"))
       (load (do-compile "gray-streams-java.lisp"))
 
+
+      ;; or here?
+      (load (do-compile "mop-based-method-combinations.lisp"))
+      ;;(load (do-compile "defcombin.lisp"))
+      
+      
       ;; But not for these.
       (mapc #'do-compile '("adjoin.lisp"
                            "and.lisp"
