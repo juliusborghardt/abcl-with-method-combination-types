@@ -301,7 +301,7 @@
       (load (do-compile "clos.lisp"))
       (load (do-compile "mop.lisp"))
 
-      ;; 251022 do the switch here?
+      
 
 
       
@@ -327,9 +327,7 @@
       (load (do-compile "gray-streams-java.lisp"))
 
 
-      ;; or here?
-      (load (do-compile "mop-based-method-combinations.lisp"))
-      ;;(load (do-compile "defcombin.lisp"))
+
       
       
       ;; But not for these.
@@ -472,6 +470,15 @@
                            "with-slots.lisp"
                            "with-standard-io-syntax.lisp"
                            "write-sequence.lisp"))
+
+      ;; Switch the method combination structure
+      ;;(load (do-compile "mop-based-method-combinations.lisp"))
+      (load (do-compile "combination-types-package.lisp"))
+      (load (do-compile "defcombin.lisp"))
+      (load (do-compile "medium.lisp"))
+      (load (do-compile "util.lisp"))
+      (load (do-compile "mop-based-method-combinations.lisp"))x
+      
             ;;; Classloader combine JAVA and THREADS abstractions
       (do-compile "classloader.lisp")
 

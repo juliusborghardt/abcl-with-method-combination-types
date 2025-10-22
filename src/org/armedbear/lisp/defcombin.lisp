@@ -1,4 +1,4 @@
-(in-package "method-combination-types")
+(in-package :method-combination-types)
 ;; ========================
 ;; Method Combination Types
 ;; ========================
@@ -776,7 +776,8 @@ combination object."
 
   ;; changed global var names -- Julius
   (substitute-method-combination instance +the-standard-method-combination+)
-  (setq +the-standard-method-combination+ instance))
+  (setq +the-standard-method-combination+ instance)
+  (setf (get 'standard 'method-combination-object) +the-standard-method-combination+))
 
 
 ;; ------------------------------------

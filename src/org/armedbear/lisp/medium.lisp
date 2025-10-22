@@ -1,4 +1,4 @@
-(in-package "method-combination-types")
+(in-package :method-combination-types)
 
 ;; ==============================
 ;; Medium Method Combination Type

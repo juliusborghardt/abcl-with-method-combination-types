@@ -1,4 +1,4 @@
-(in-package "method-combination-types")
+(in-package :method-combination-types)
 ;; A better protocol to access method combination objects. This is merely a
 ;; duplication of my patched SBCL's code for FIND-METHOD-COMBINATION. There's
 ;; no point in implementing a SETF method here since those objects are handled

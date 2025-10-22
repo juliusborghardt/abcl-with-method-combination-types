@@ -2,8 +2,14 @@
 ;; as seen in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
 ;; by Julius Borghardt https://github.com/juliusborghardt
 
-(load (do-compile "combination-types-package.lisp"))
-(in-package "method-combination-types")
+
+
+;;(require "COMPILE-FILE")
+;;(load (do-compile "combination-types-package.lisp"))
+
+(in-package :method-combination-types)
+
+
 #|
 (defclass standard-method-combination (metaobject)
   ((options :accessor standard-method-combination-options
@@ -80,7 +86,7 @@
 |#
 
 
-(load (do-compile "defcombin.lisp"))
+;;(load (do-compile "defcombin.lisp"))
 #|
 ;; redefined from clos.lisp
 (defmacro define-method-combination (&whole form name . args)
@@ -178,7 +184,7 @@ combination object."
   (setq *or-method-combination* or-instance))
 |#
 
-(load (do-compile "util.lisp"))
+;;(load (do-compile "util.lisp"))
 #|
 ;; util
 ;; A better protocol to access method combination objects. This is merely a

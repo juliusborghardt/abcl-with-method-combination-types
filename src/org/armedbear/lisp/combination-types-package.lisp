@@ -12,3 +12,4 @@
 	   :define-medium-method-combination-type
 	   :generic-function! :generic-function!-p :defgeneric!
 	   :call-with-combination :call/cb :install-#!-reader-macro))
+;;(in-package :method-combination-types) package isnt known yet
