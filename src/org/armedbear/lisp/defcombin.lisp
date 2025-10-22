@@ -55,7 +55,7 @@ STANDARD-METHOD-COMBINATION-TYPE."
   (:documentation "Metaclass for long method combination types."))
 
 
-(defglobal **method-combination-types** (make-hash-table :test 'eq)
+(defconstant **method-combination-types** (make-hash-table :test 'eq)
   "The global method combination types hash table.
 This hash table maps names to method combination types.")
 
@@ -99,7 +99,6 @@ combination type."
 
 
 
-
 ;; ===================
 ;; Method Combinations
 ;; ===================
@@ -341,7 +340,8 @@ combination type."
          body)
       `(load-long-defcombin
         ',type-name ',documentation #',function ',lambda-list
-        ',args-option ',mc-class ',mct-spec (sb-c:source-location)))))
+        ;;',args-option ',mc-class ',mct-spec (sb-c:source-location)))))
+	',args-option ',mc-class ',mct-spec (or *compile-file-pathname* *load-pathname*)))))
 
 (defun load-long-defcombin
     (name documentation function lambda-list args-lambda-list
@@ -707,6 +707,16 @@ combination type."
 ;; behavior of conforming code, and it is not explicitly prohibited).
 ;; -- didier
 
+;; stolen frfom SBCL/src/compiler/proclaim.lisp
+(defun check-designator (name macro &optional (predicate #'symbolp)
+                                              (what "symbol")
+                                              (arg-reference "NAME"))
+  (unless (funcall predicate name)
+    (error (format nil "The ~A argument to ~A, ~~S, is not a ~A."
+                   arg-reference macro what)
+           name)))
+
+
 (defmacro define-method-combination (&whole form name . args)
   (declare (ignore args))
   (check-designator name 'define-method-combination)
@@ -731,7 +741,8 @@ combination type."
           `(load-short-defcombin ',type-name ',operator ',ioa
                                  ,(unless (unbound-marker-p doc) doc)
                                  ',mc-class ',mct-class
-                                 (sb-c:source-location))))))
+                                 ;;(sb-c:source-location))))))
+				 (or *compile-file-pathname* *load-pathname*))))))
 
 
 
@@ -776,7 +787,7 @@ combination object."
 
   ;; changed global var names -- Julius
   (substitute-method-combination instance +the-standard-method-combination+)
-  (setq +the-standard-method-combination+ instance)
+  (defconstant +the-standard-method-combination+ instance)
   (setf (get 'standard 'method-combination-object) +the-standard-method-combination+))
 
 
