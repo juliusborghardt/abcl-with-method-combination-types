@@ -240,54 +240,7 @@ compare the method combination name to the symbol 'standard.")
 |#
 
 ;; print
-(defmethod print-object ((method-combination standard-method-combination) stream)
-  (print-unreadable-object (method-combination stream :identity t)
-    (format stream "~A ~S" (class-name (class-of method-combination))
-            (ignore-errors (mop::method-combination-name method-combination))))
-  method-combination)
 
-
-;; accessor functions, redefined from clos.lisp
-(defun method-combination-name (method-combination)
-  (check-type method-combination standard-method-combination)
-  (std-slot-value method-combination 'sys::name))
-
-(defun method-combination-documentation (method-combination)
-  (check-type method-combination standard-method-combination)
-  (std-slot-value method-combination 'sys:%documentation))
-
-(defun short-method-combination-operator (method-combination)
-  (check-type method-combination short-method-combination)
-  (std-slot-value method-combination 'operator))
-
-(defun short-method-combination-identity-with-one-argument (method-combination)
-  (check-type method-combination short-method-combination)
-  (std-slot-value method-combination 'identity-with-one-argument))
-
-(defun long-method-combination-lambda-list (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination 'lambda-list))
-
-;; how does this work?
-(defun long-method-combination-method-group-specs (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination 'method-group-specs))
-
-(defun long-method-combination-args-lambda-list (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination '%args-lambda-list))
-
-(defun long-method-combination-generic-function-symbol (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination '%function))
-
-(defun long-method-combination-function (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination 'function))
-
-(defun long-method-combination-arguments (method-combination)
-  (check-type method-combination long-method-combination)
-  (std-slot-value method-combination 'arguments))
 
 ;(defun long-method-combination-declarations (method-combination)
 ;  (check-type method-combination long-method-combination)

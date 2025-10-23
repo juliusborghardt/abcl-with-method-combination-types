@@ -1,58 +1,4 @@
 (in-package :method-combination-types)
-;; ========================
-;; Method Combination Types
-;; ========================
-
-;; This file is part of the Implementation of
-;; Method Combination Types as proposed by Didier Verna
-;; in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
-;; adapted for ABCL by Julius Borghardt https://github.com/juliusborghardt
-
-(defclass method-combination-type (standard-class)
-  ()
-  (:documentation "Metaclass for all method combination types."))
-
-;; #### WARNING: trying to hijack the NAME slot in anonymous class metaobjects
-;; (that is, classes that are not meant to be registered globally) is
-;; dangerous, especially during bootstrap. I've seen very strange errors
-;; occurring when trying to do so. Hence the TYPE-NAME slot below.
-;; -- didier
-(defclass standard-method-combination-type (method-combination-type)
-  ((type-name :initarg :type-name :reader method-combination-type-name)
-   (lambda-list :initform nil :initarg :lambda-list
-                :reader method-combination-type-lambda-list)
-   ;; A reader without "type" in the name seems more readable to me.
-   (%constructor :reader method-combination-%constructor)
-   (%cache :initform (make-hash-table :test #'equal)
-           :reader method-combination-type-%cache))
-  (:documentation "Metaclass for standard method combination types.
-It is the base class for short and long method combination types metaclasses.
-This only class directly implemented as this class is the standard method
-combination class."))
-
-(defmethod validate-superclass
-    ((class standard-method-combination-type) (superclass standard-class))
-  "Validate the creation of subclasses of METHOD-COMBINATION implemented as
-STANDARD-METHOD-COMBINATION-TYPE."
-  t)
-
-
-(defclass short-method-combination-type (standard-method-combination-type)
-  ((lambda-list :initform '(&optional (order :most-specific-first)))
-   (operator :initarg :operator
-             :reader short-method-combination-type-operator)
-   (identity-with-one-argument
-    :initarg :identity-with-one-argument
-    :reader short-method-combination-type-identity-with-one-argument))
-  (:documentation "Metaclass for short method combination types."))
-
-
-(defclass long-method-combination-type (standard-method-combination-type)
-  ((%args-lambda-list :initform nil :initarg :args-lambda-list
-                      :reader long-method-combination-type-%args-lambda-list)
-   (%function :initarg :function
-              :reader long-method-combination-type-%function))
-  (:documentation "Metaclass for long method combination types."))
 
 
 (defconstant **method-combination-types** (make-hash-table :test 'eq)
@@ -105,6 +51,16 @@ combination type."
 
 ;; This section completes the minimal instalment of the method combinations
 ;; hierarchy that was elaborated in defs.lisp.
+
+;; from sbcl/src/pcl/dfun.lisp
+(defun flush-effective-method-cache (generic-function)
+  (dolist (method (generic-function-methods generic-function))
+    (let ((cache
+           (if (listp method) (sixth method) (method-em-cache method))))
+      (when cache
+        (rplaca cache nil)
+        (rplacd cache nil)))))
+
 
 (defmethod update-generic-function-for-redefined-method-combination
     ((function generic-function)
@@ -224,7 +180,7 @@ combination type."
      &aux (mc-class (find-class mc-class))
           (mct-class (find-class (if (symbolp mct-spec)
                                    mct-spec
-                                   (car mct-spec)))))
+                                   (car mct-specx)))))
   "Register a new short method combination type under NAME."
   (unless (subtypep mc-class 'short-method-combination)
     (method-combination-error
@@ -265,6 +221,15 @@ combination type."
               new :options (or options '(:most-specific-first)))))
     (load-defcombin name new documentation)))
 
+
+;; from sbcl/src/pcl/combin.lisp
+(defun short-method-combination-qualifiers (type-name)
+  (list type-name :around))
+
+(defun short-method-combination-qualifier-p (type-name qualifier)
+  (or (eq qualifier type-name) (eq qualifier :around)))
+
+
 (defmethod invalid-qualifiers
     ((gf generic-function) (combin short-method-combination) method)
   (let* ((qualifiers (method-qualifiers method))
@@ -302,6 +267,11 @@ combination type."
 ;; ------------------------
 ;; Long method combinations
 ;; ------------------------
+
+(define-condition simple-program-error (simple-condition program-error) ())
+(define-error-wrapper %program-error (&optional datum &rest arguments)
+  (error (apply #'coerce-to-condition datum
+                'simple-program-error '%program-error arguments)))
 
 (defun expand-long-defcombin (form)
   (let ((type-name (cadr form))
@@ -386,6 +356,45 @@ combination type."
   (funcall (long-method-combination-type-%function (class-of combination))
     function combination applicable-methods))
 
+(defun parse-body (body doc-string-allowed &optional silent)
+  (flet ((doc-string-p (x remaining-forms doc)
+           (and (stringp x) doc-string-allowed
+                  ;; ANSI 3.4.11 explicitly requires that a doc string
+                  ;; be followed by another form (either an ordinary form
+                  ;; or a declaration). Hence:
+                remaining-forms
+                (if doc
+                    ;; .. and says that the consequences of multiple
+                    ;; doc strings are unspecified.
+                    ;; That's probably not something the programmer intends.
+                    (sb-c:compiler-warn "Duplicate doc string ~S" x)
+                    t)))
+         (declaration-p (x)
+           (when (listp x)
+             (let ((name (car x)))
+               (cond ((eq name 'declare) t)
+                     (t
+                      (when (and (eq name 'declaim) (not silent))
+                        ;; technically legal, but rather unlikely to
+                        ;; be what the user meant to do...
+                        (style-warn
+                         "DECLAIM where DECLARE was probably intended"))
+                      nil))))))
+    (let ((forms body) (decls (list nil)) (doc nil))
+      (declare (dynamic-extent decls))
+      (let ((decls decls))
+        (loop (when (endp forms) (return))
+              (let ((form (first forms)))
+                (cond ((doc-string-p form (rest forms) doc)
+                       (setq doc form))
+                      ((declaration-p form)
+                       (setq decls (setf (cdr decls) (list form))))
+                      (t
+                       (return))))
+              (setq forms (rest forms))))
+      (values forms (cdr decls) doc))))
+
+
 (defun make-long-method-combination-function
        (type-name ll method-group-specifiers args-option gf-var body)
   (declare (ignore type-name))
@@ -439,6 +448,39 @@ combination type."
     `((or ,@tests)
       ,maybe-error-clause
       (push .method. ,name))))
+
+
+;; From sbcl/src/compiler/early-contantp.lisp
+(declaim (inline constantp))
+(defun constantp (form &optional (environment nil envp))
+  "True of any FORM that has a constant value: self-evaluating objects,
+keywords, defined constants, quote forms. Additionally the
+constant-foldability of some function calls and special forms is recognized.
+If ENVIRONMENT is provided, the FORM is first macroexpanded in it."
+  (%constantp form environment envp))
+
+(declaim (inline constant-form-value))
+(defun constant-form-value (form &optional (environment nil envp))
+  "Returns the value of the constant FORM in ENVIRONMENT. Behaviour
+is undefined unless CONSTANTP has been first used to determine the
+constantness of the FORM in ENVIRONMENT."
+  (%constant-form-value form environment envp))
+
+(defun %constant-form-value (form environment envp)
+  (let ((form (if (or envp
+                      (typep form '(cons (eql quasiquote) (cons t null))))
+                  (%macroexpand form environment)
+                  form)))
+    (typecase form
+      (symbol
+       (symbol-value form))
+      (list
+       (multiple-value-bind (specialp value)
+           (constant-special-form-value form environment envp)
+         (if specialp value (constant-function-call-value
+                             form environment envp))))
+      (t
+       form))))
 
 (defun wrap-method-group-specifier-bindings
     (method-group-specifiers declarations real-body)
@@ -506,7 +548,12 @@ combination type."
             (cond ,@(nreverse cond-clauses))))
         ,@(nreverse required-checks)
         ,@(nreverse order-cleanups)
-        ,@real-body))))
+         ,@real-body))))
+
+(defun memq (e l)
+  (do ((current l (cdr current)))
+      ((atom current) nil)
+    (when (eq (car current) e) (return current))))
 
 (defun parse-method-group-specifier (method-group-specifier)
   (unless (symbolp (car method-group-specifier))
@@ -717,6 +764,15 @@ combination type."
            name)))
 
 
+;; from sbcl/src/code/cross-misc.lisp
+(defvar *unbound-marker* (make-symbol "UNBOUND-MARKER"))
+
+(defun make-unbound-marker ()
+  *unbound-marker*)
+
+(defun unbound-marker-p (x)
+  (eq x *unbound-marker*))
+
 (defmacro define-method-combination (&whole form name . args)
   (declare (ignore args))
   (check-designator name 'define-method-combination)
@@ -746,7 +802,54 @@ combination type."
 
 
 
+(defmethod print-object ((method-combination standard-method-combination) stream)
+  (print-unreadable-object (method-combination stream :identity t)
+    (format stream "~A ~S" (class-name (class-of method-combination))
+            (ignore-errors (mop::method-combination-name method-combination))))
+  method-combination)
 
+
+;; accessor functions, redefined from clos.lisp
+(defun method-combination-name (method-combination)
+  (check-type method-combination standard-method-combination)
+  (std-slot-value method-combination 'sys::name))
+
+(defun method-combination-documentation (method-combination)
+  (check-type method-combination standard-method-combination)
+  (std-slot-value method-combination 'sys:%documentation))
+
+(defun short-method-combination-operator (method-combination)
+  (check-type method-combination short-method-combination)
+  (std-slot-value method-combination 'operator))
+
+(defun short-method-combination-identity-with-one-argument (method-combination)
+  (check-type method-combination short-method-combination)
+  (std-slot-value method-combination 'identity-with-one-argument))
+
+(defun long-method-combination-lambda-list (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination 'lambda-list))
+
+;; how does this work?
+(defun long-method-combination-method-group-specs (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination 'method-group-specs))
+
+(defun long-method-combination-args-lambda-list (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination '%args-lambda-list))
+
+(defun long-method-combination-generic-function-symbol (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination '%function))
+
+(defun long-method-combination-function (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination 'function))
+
+(defun long-method-combination-arguments (method-combination)
+  (check-type method-combination long-method-combination)
+  (std-slot-value method-combination 'arguments))
 ;; ========================
 ;; Infrastructure Injection
 ;; ========================
