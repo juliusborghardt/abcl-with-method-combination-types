@@ -1,3 +1,8 @@
+;; This file is part of the Implementation of
+;; Method Combination Types as proposed by Didier Verna
+;; in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
+;; adapted for ABCL by Julius Borghardt https://github.com/juliusborghardt
+
 (in-package :method-combination-types)
 
 
@@ -70,6 +75,18 @@ combination type."
   (flush-effective-method-cache function)
   (reinitialize-instance function))
 
+
+
+;; oversimplified reimplementation to replace hashset.lisp from sbcl -- JB
+;; no concurrency!
+(defun map-hashset (function hashset)
+  "Apply FUNCTION to every element of HASHSET (a hash-table or similar)."
+  (maphash (lambda (key value)
+             (declare (ignore value))
+             (funcall function key))
+           hashset))
+
+
 (defmethod update-instance-for-different-class :after
     ((previous standard-method-combination)
      (current standard-method-combination)
@@ -79,7 +96,8 @@ combination type."
    (lambda (gf)
      (update-generic-function-for-redefined-method-combination
       gf previous current))
-   (method-combination-%generic-functions current)))
+   ;;(method-combination-%generic-functions current)))
+   (long-method-combination-generic-function-symbol current)))
 
 
 ;; -----------------------------------
@@ -132,13 +150,6 @@ combination type."
 ;; globally, which I don't really want (all other concrete method combination
 ;; classes are anonymous; even the built-in short ones).
 ;; -- didier
-(defclass standard-standard-method-combination (standard-method-combination)
-  ()
-  (:metaclass standard-method-combination-type)
-  (:documentation "The standard method combination."))
-
-(setf (random-documentation 'standard 'method-combination)
-      "The standard method combination.")
 
 (defmethod compute-primary-methods
     ((gf generic-function)
@@ -269,9 +280,10 @@ combination type."
 ;; ------------------------
 
 (define-condition simple-program-error (simple-condition program-error) ())
-(define-error-wrapper %program-error (&optional datum &rest arguments)
-  (error (apply #'coerce-to-condition datum
-                'simple-program-error '%program-error arguments)))
+
+;(define-error-wrapper %program-error (&optional datum &rest arguments)
+;  (error (apply #'coerce-to-condition datum
+;                'simple-program-error '%program-error arguments)))
 
 (defun expand-long-defcombin (form)
   (let ((type-name (cadr form))
@@ -284,20 +296,20 @@ combination type."
         (mc-class 'long-method-combination)
         (mct-spec '(long-method-combination-type)))
     (unless method-group-specifiers-presentp
-      (%program-error
+      (error
        "~@<The long form of ~S requires a list of method group specifiers.~:@>"
        'define-method-combination))
     (when (and (consp (car body)) (eq (caar body) :arguments))
       (setq args-option (cdr (pop body))))
     (when (and (consp (car body)) (eq (caar body) :generic-function))
       (unless (and (cdar body) (symbolp (cadar body)) (null (cddar body)))
-        (%program-error
+        (error
          "~@<The argument to the ~S option of ~S must be a single symbol.~:@>"
          :generic-function 'define-method-combination))
       (setq gf-var (cadr (pop body))))
     (when (and (consp (car body)) (eq (caar body) :method-combination-class))
       (unless (and (cdar body) (symbolp (cadar body)) (null (cddar body)))
-        (%program-error
+        (error
          "~@<The argument to the ~S option of ~S must be a single symbol.~:@>"
          :method-combination-class 'define-method-combination))
       (setq mc-class (cadr (pop body))))
@@ -356,6 +368,17 @@ combination type."
   (funcall (long-method-combination-type-%function (class-of combination))
     function combination applicable-methods))
 
+(define-condition simple-style-warning (simple-condition style-warning) ())
+(defun style-warn (datum &rest arguments)
+  ;; Cross-compiler needs a special-case for DATUM being a string,
+  ;; because it needs to produce a SIMPLE-STYLE-WARNING, not SIMPLE-WARNING.
+  ;; The SBCL-specific %WARN function - which allows specifying the default
+  ;; condition class when handed a string - exists only on the target lisp.
+  (if (stringp datum)
+      (warn 'simple-style-warning
+            :format-control datum :format-arguments arguments)
+      (apply #'warn datum arguments)))
+
 (defun parse-body (body doc-string-allowed &optional silent)
   (flet ((doc-string-p (x remaining-forms doc)
            (and (stringp x) doc-string-allowed
@@ -363,12 +386,7 @@ combination type."
                   ;; be followed by another form (either an ordinary form
                   ;; or a declaration). Hence:
                 remaining-forms
-                (if doc
-                    ;; .. and says that the consequences of multiple
-                    ;; doc strings are unspecified.
-                    ;; That's probably not something the programmer intends.
-                    (sb-c:compiler-warn "Duplicate doc string ~S" x)
-                    t)))
+                ))
          (declaration-p (x)
            (when (listp x)
              (let ((name (car x)))
@@ -459,12 +477,41 @@ constant-foldability of some function calls and special forms is recognized.
 If ENVIRONMENT is provided, the FORM is first macroexpanded in it."
   (%constantp form environment envp))
 
-(declaim (inline constant-form-value))
-(defun constant-form-value (form &optional (environment nil envp))
-  "Returns the value of the constant FORM in ENVIRONMENT. Behaviour
-is undefined unless CONSTANTP has been first used to determine the
-constantness of the FORM in ENVIRONMENT."
-  (%constant-form-value form environment envp))
+(defun %constantp (form environment envp)
+  ;; Pick off quasiquote prior to macroexpansion.
+  (when (typep form '(cons (eql quasiquote) (cons t null)))
+    (return-from %constantp
+      (constant-quasiquote-form-p (cadr form) environment envp)))
+  (let ((form (if envp
+                  (handler-case
+                      (%macroexpand form environment)
+                    (error ()
+                      (return-from %constantp)))
+                  form)))
+    (typecase form
+      ;; This INFO test catches KEYWORDs as well as explicitly
+      ;; DEFCONSTANT symbols.
+      (symbol
+       (or (eq (info :variable :kind form) :constant)
+           (constant-special-variable-p form)))
+      (list
+       (let ((answer (constant-special-form-p form environment envp)))
+         (if (eq answer :maybe)
+             (values (constant-function-call-p form environment envp))
+             answer)))
+      (t t))))
+
+(defun constant-quasiquote-form-p (expr environment envp)
+  ;; This is an utter cinch because we haven't macroexpanded.
+  ;; Parse just enough to recognize (DEFTYPE <T2> () (<T1> ,THING)) etc.
+  (named-let recurse ((expr expr))
+    (cond ((atom expr)
+           (cond ((comma-p expr)
+                  (%constantp (comma-expr expr) environment envp))
+                 ((simple-vector-p expr) (every #'recurse expr))
+                 (t)))
+          ((eq (car expr) 'quasiquote) nil) ; give up
+          (t (and (recurse (car expr)) (recurse (cdr expr)))))))
 
 (defun %constant-form-value (form environment envp)
   (let ((form (if (or envp
@@ -481,6 +528,68 @@ constantness of the FORM in ENVIRONMENT."
                              form environment envp))))
       (t
        form))))
+
+(defun constant-special-variable-p (name)
+  (and (member name *special-constant-variables*) t))
+
+(declaim (inline constant-form-value))
+(defun constant-form-value (form &optional (environment nil envp))
+  "Returns the value of the constant FORM in ENVIRONMENT. Behaviour
+is undefined unless CONSTANTP has been first used to determine the
+constantness of the FORM in ENVIRONMENT."
+  (%constant-form-value form environment envp))
+
+
+(defun constant-function-call-value (form environment envp)
+  (apply (fdefinition (car form))
+         (mapcar (lambda (arg)
+                   (%constant-form-value arg environment envp))
+                 (cdr form))))
+
+
+(defun %macroexpand (form &optional env)
+  (labels ((frob (form expanded)
+             (multiple-value-bind (new-form newly-expanded-p)
+                 (%macroexpand-1 form env)
+               (if newly-expanded-p
+                   (frob new-form t)
+                   (values new-form expanded)))))
+    (frob form nil)))
+
+(defun %constant-form-value (form environment envp)
+  (let ((form (if (or envp
+                      (typep form '(cons (eql quasiquote) (cons t null))))
+                  (%macroexpand form environment)
+                  form)))
+    (typecase form
+      (symbol
+       (symbol-value form))
+      (list
+       (multiple-value-bind (specialp value)
+           (constant-special-form-value form environment envp)
+         (if specialp value (constant-function-call-value
+                             form environment envp))))
+      (t
+       form))))
+
+
+;; all from sbcl
+(defun constant-special-form-p (form environment envp)
+    (let (result)
+      (tagbody (setq result (expand-cases 1 :maybe)) fail)
+      result))
+
+(defun constant-special-form-value (form environment envp)
+    (let ((result))
+      (tagbody
+         (setq result (expand-cases 2 (return-from constant-special-form-value
+                                        (values nil nil))))
+         (return-from constant-special-form-value (values t result))
+       fail))
+    ;; Mutatation of FORM could cause failure. It's user error, not a bug.
+    (error "CONSTANT-FORM-VALUE called with invalid expression ~S" form))
+
+
 
 (defun wrap-method-group-specifier-bindings
     (method-group-specifiers declarations real-body)
@@ -557,7 +666,7 @@ constantness of the FORM in ENVIRONMENT."
 
 (defun parse-method-group-specifier (method-group-specifier)
   (unless (symbolp (car method-group-specifier))
-    (%program-error "~@<Method group specifiers in the long form of ~S ~
+    (error "~@<Method group specifiers in the long form of ~S ~
                      must begin with a symbol.~:@>" 'define-method-combination))
   (let* ((name (pop method-group-specifier))
          (patterns ())
@@ -575,7 +684,7 @@ constantness of the FORM in ENVIRONMENT."
                              collect)))))
              (nreverse collect))))
     (when (null patterns)
-      (%program-error "~@<Method group specifiers in the long form of ~S ~
+      (error "~@<Method group specifiers in the long form of ~S ~
                        must have at least one qualifier pattern or predicate.~@:>"
                       'define-method-combination))
     (values name
@@ -630,7 +739,7 @@ constantness of the FORM in ENVIRONMENT."
                :accept (lambda-list-keyword-mask '(&allow-other-keys &aux &key &optional &rest &whole)))))
     (check-lambda-list-names llks required optional rest key aux env whole
                              :context "a define-method-combination arguments lambda list"
-                             :signal-via #'%program-error)
+                             :signal-via #'error)
     (let (intercept-rebindings)
       (flet ((intercept (sym) (push `(,sym ',sym) intercept-rebindings)))
         (when whole (intercept (car whole)))
@@ -791,7 +900,7 @@ constantness of the FORM in ENVIRONMENT."
                (mct-class (getf (cddr form) :method-combination-type-class
                                 'short-method-combination-type)))
           (unless (or (unbound-marker-p doc) (stringp doc))
-            (%program-error
+            (error
              "~@<~S argument to the short form of ~S must be a string.~:@>"
              :documentation 'define-method-combination))
           `(load-short-defcombin ',type-name ',operator ',ioa
@@ -866,10 +975,14 @@ This function transfers the generic functions cache from the old to the new
 object, and updates all such generic functions to point to the new method
 combination object."
   (setf (slot-value new '%generic-functions)
-        (method-combination-%generic-functions old))
+        ;;(method-combination-%generic-functions old))
+	;; this probably doesnt work
+	(long-method-combination-generic-function-symbol old))
+  
   (map-hashset (lambda (gf)
                  (setf (generic-function-method-combination gf) new))
-               (method-combination-%generic-functions new)))
+               ;;(method-combination-%generic-functions new)))
+	       (long-method-combination-generic-function-symbol old)))
 
 
 ;; ---------------------------
@@ -889,7 +1002,7 @@ combination object."
   (setf (gethash 'standard **method-combination-types**) class)
 
   ;; changed global var names -- Julius
-  (substitute-method-combination instance +the-standard-method-combination+)
+ ;; (substitute-method-combination instance +the-standard-method-combination+)
   (defconstant +the-standard-method-combination+ instance)
   (setf (get 'standard 'method-combination-object) +the-standard-method-combination+))
 
@@ -900,24 +1013,24 @@ combination object."
 
 ;;; The built-in method combination types as taken from page 1-31 of 88-002R.
 
-(define-method-combination +      :identity-with-one-argument t)
-(define-method-combination and    :identity-with-one-argument t)
-(define-method-combination append :identity-with-one-argument nil)
-(define-method-combination list   :identity-with-one-argument nil)
-(define-method-combination max    :identity-with-one-argument t)
-(define-method-combination min    :identity-with-one-argument t)
-(define-method-combination nconc  :identity-with-one-argument t)
-(define-method-combination progn  :identity-with-one-argument t)
-(define-method-combination or     :identity-with-one-argument t)
+;(define-method-combination +      :identity-with-one-argument t)
+;(define-method-combination and    :identity-with-one-argument t)
+;(define-method-combination append :identity-with-one-argument nil)
+;(define-method-combination list   :identity-with-one-argument nil)
+;(define-method-combination max    :identity-with-one-argument t)
+;(define-method-combination min    :identity-with-one-argument t)
+;(define-method-combination nconc  :identity-with-one-argument t)
+;(define-method-combination progn  :identity-with-one-argument t)
+;(define-method-combination or     :identity-with-one-argument t)
 
-(let* ((or-class (find-method-combination-type 'or))
-       (or-instance (funcall (method-combination-%constructor or-class)
-                      '(:most-specific-first))))
-  (setf (gethash '(:most-specific-first)
-                 (method-combination-type-%cache or-class))
-        or-instance)
+;(let* ((or-class (find-method-combination-type 'or))
+;       (or-instance (funcall (method-combination-%constructor or-class)
+;                      '(:most-specific-first))))
+;  (setf (gethash '(:most-specific-first)
+;                 (method-combination-type-%cache or-class))
+;        or-instance)
 
   ;; TODO find equivalents in ABCL -- Julius
   ;;(substitute-method-combination or-instance *or-method-combination*)
   ;;(setq *or-method-combination* or-instance)
-  )
+  

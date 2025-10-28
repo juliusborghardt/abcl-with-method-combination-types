@@ -473,12 +473,11 @@
 
       ;; Switch the method combination structure
       ;;(load (do-compile "mop-based-method-combinations.lisp"))
-      (load (do-compile "combination-types-package.lisp"))
-      (load (do-compile "hashset.lisp"))
-      (load (do-compile "combination-types-classes.lisp"))
-      (load (do-compile "combination-types-fun.lisp"))
-      (load (do-compile "combination-types-medium.lisp"))
-      (load (do-compile "combination-types-util.lisp"))
+      ;(load (do-compile "combination-types-package.lisp"))
+      ;(load (do-compile "combination-types-classes.lisp"))
+      ;;(load (do-compile "combination-types-fun.lisp"))
+      ;;(load (do-compile "combination-types-medium.lisp"))
+      ;;(load (do-compile "combination-types-util.lisp"))
       
             ;;; Classloader combine JAVA and THREADS abstractions
       (do-compile "classloader.lisp")

@@ -52,5 +52,8 @@ public final class Main {
             }
         };
         new Thread(null, r, "interpreter", 4194304L).start();
+
+	//interpreter.eval("(load \"combination-types-classes.lisp\")");
+
     }
 }

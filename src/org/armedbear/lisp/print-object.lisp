@@ -121,4 +121,6 @@
                 (cell-error-name x)))
       (format stream "The variable ~S is unbound." (cell-error-name x))))
 
+;; cell-error-name is not known here --jb
+
 (provide "PRINT-OBJECT")
