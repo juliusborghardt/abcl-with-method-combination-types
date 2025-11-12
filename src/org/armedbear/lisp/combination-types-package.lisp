@@ -4,13 +4,11 @@
 ;; adapted for ABCL by Julius Borghardt https://github.com/juliusborghardt
 
 (defpackage :method-combination-types
-  (:use :cl)
+  (:use :cl :mop)
   (:import-from :mop
    :funcallable-standard-class
 		:generic-function-method-combination
    :long-method-combination)
-  (:import-from :SYSTEM
-   :aver :match-wild-jar-pathname :source)
   (:export :find-method-combination* :change-method-combination
 	   :define-medium-method-combination-type
 	   :generic-function! :generic-function!-p :defgeneric!

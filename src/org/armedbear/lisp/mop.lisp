@@ -14,7 +14,8 @@
       (or (and (eql (class-of class) +the-standard-class+)
                (eql (class-of superclass) +the-funcallable-standard-class+))
           (and (eql (class-of class) +the-funcallable-standard-class+)
-               (eql (class-of superclass) +the-standard-class+)))))
+               (eql (class-of superclass) +the-standard-class+))
+	  (equalp (class-of class) 'standard-standard-method-combination))))
 
 ;;; This is against the letter of the MOP, but very much in its spirit.
 (defmethod validate-superclass ((class class)

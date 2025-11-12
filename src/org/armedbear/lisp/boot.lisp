@@ -215,8 +215,8 @@
 (load-system-file "defsetf")
 (load-system-file "package")
 
-(load "src/org/armedbear/lisp/combination-types-package.lisp")
-(load "src/org/armedbear/lisp/combination-types-classes.lisp")
+;;(load "src/org/armedbear/lisp/combination-types-package.lisp")
+;;(load "src/org/armedbear/lisp/combination-types-classes.lisp")
 
 (unless (featurep :j)
   (unless *noinform*
