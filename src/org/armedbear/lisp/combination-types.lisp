@@ -1,4 +1,3 @@
-;;metaobject
 ;; Didier's system as a non-internal package
 
 (in-package :method-combination-types)
@@ -19,7 +18,7 @@
   ((type-name :initarg :type-name :reader method-combination-type-name)
    (lambda-list :initform nil :initarg :lambda-list
                 :reader method-combination-type-lambda-list)
-   ;; A reader without "type" in the name seemxs more readable to me.
+   ;; A reader without "type" in the name seems more readable to me.
    (%constructor :reader method-combination-%constructor)
    (%cache :initform (make-hash-table :test #'equal)
            :reader method-combination-type-%cache))
@@ -68,7 +67,7 @@ combination class."))
 (defclass standard-standard-method-combination (standard-method-combination)
   ((type-name :accessor standard-standard-method-combination-type-name :initarg :type-name :initform "standard"))
   (:metaclass standard-method-combination-type))
-;; (defparameter *standard-method-combination* (make-instance 'standard-standard-method-combination))
+(defparameter *standard-method-combination* (make-instance 'standard-standard-method-combination))
 ;; for non-standard meth-coms, the pendant to this class will be anonymous
 
 

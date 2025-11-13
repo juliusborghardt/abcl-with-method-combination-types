@@ -12,5 +12,11 @@
   (:export :find-method-combination* :change-method-combination
 	   :define-medium-method-combination-type
 	   :generic-function! :generic-function!-p :defgeneric!
-	   :call-with-combination :call/cb :install-#!-reader-macro))
+	   :call-with-combination :call/cb :install-#!-reader-macro
+   :find-method-combination :define-method-combination
+   :method-combination-type-name :substitute-method-combination
+   :standard-method-combination :method-combination-type
+   :standard-method-combination-type :long-method-combination
+   :short-method-combination :short-method-combination-type
+   :long-method-combination-type :standard-standard-method-combination))
 

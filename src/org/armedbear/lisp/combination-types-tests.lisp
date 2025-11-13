@@ -1,11 +1,12 @@
 ;;;; ------------------------------------------------------------------
 ;;;; Test suite for portable method combination implementation
-;;;; (uses DEFINE-METHOD-COMBINATION* instead of the standard macro)
+;;;; load with: :cl src/org/armedbear/lisp/combination-types-tests.lisp
 ;;;; ------------------------------------------------------------------
 
 (defpackage :method-combination-tests
-  (:use :cl)
-  (:export :run-method-combination-tests))
+  (:use :cl :mop)
+  (:export :run-method-combination-tests :run-symbol-bound-check
+	   :run-long-combination-tests :run-short-combination-tests))
 (in-package :method-combination-tests)
 
 (defun log (fmt &rest args)
@@ -14,6 +15,29 @@
 (defun assert-equal (expected actual)
   (unless (equal expected actual)
     (error "Assertion failed: expected ~S but got ~S" expected actual)))
+
+
+;;; -------------------------------------------------------------------
+;;; 0. Determine which MOP features are available
+;;; -------------------------------------------------------------------
+
+(defun run-symbol-bound-check ()
+  (log "Starting check for bound symbols...")
+  (loop for sym in  
+	'(find-method-combination
+	  compute-effective-method
+	  reinitialize-instance
+	  update-instance-for-different-class
+	  add-method remove-method
+	  shared-initialize
+	  make-instance change-class method-combination
+	  standard-method-combination
+	  short-method-combination
+	  long-method-combination
+	  generic-function standard-generic-function
+	  standard-class metaobject)
+	do (log (format nil "~a" (list sym (fboundp sym))))))
+
 
 ;;; -------------------------------------------------------------------
 ;;; 1. Define a short and a long method combination
@@ -82,10 +106,10 @@
   (:method-combination my-max))
 
 ;; Multiple primary methods contributing different results
-(defmethod test-max ((x (eql :a))) 10)
-(defmethod test-max ((x (eql :b))) 42)
-(defmethod test-max ((x (eql :c))) 7)
-(defmethod test-max ((x t)) 5)
+(defmethod test-max my-max ((x (eql :a))) 10)
+(defmethod test-max my-max ((x (eql :b))) 42)
+(defmethod test-max my-max ((x (eql :c))) 7)
+(defmethod test-max my-max ((x t)) 5)
 
 (defclass parent () ())
 (defclass child (parent) ())
@@ -93,20 +117,15 @@
 (defgeneric test-max-inheritance (obj)
   (:method-combination my-max))
     
-(defmethod test-max-inheritance ((o parent)) 10)
-(defmethod test-max-inheritance ((o child)) 99)
+(defmethod test-max-inheritance my-max ((o parent)) 10)
+(defmethod test-max-inheritance my-max ((o child)) 99)
   
 ;;; -------------------------------------------------------------------
 ;;; 3. Run-time checks
 ;;; -------------------------------------------------------------------
-(defun run-method-combination-tests ()
-  (log "Running method-combination tests...")
+(defun run-long-combination-tests ()
   (let ((l1 (test-sum 2 3))
-        (l2 (test-sum :special 7))
-	(s1 (test-max :a))
-        (s2 (test-max :b))
-        (s3 (test-max :c))
-        (s4 (test-max :z)))
+	(l2 (test-sum :special 7)))
 
     ;; BEGIN LONG FORM TESTS
     (log "test-sum(2,3)  => ~A" l1)
@@ -117,10 +136,13 @@
     (assert-equal 106 l1)
     ;; :special method should run alone, 1000 + 7 = 1007
     (assert-equal 1007 l2)
-    (log "Long-form cases OK.")
+    (log "Long-form cases OK.")))
 
-
-    ;; BEGIN SHORT FORM TESTS
+(defun run-short-combination-tests ()
+  (let ((s1 (test-max :a))
+        (s2 (test-max :b))
+        (s3 (test-max :c))
+        (s4 (test-max :z)))
     (log "test-max(:a) => ~A" s1)
     (log "test-max(:b) => ~A" s2)
     (log "test-max(:c) => ~A" s3)
@@ -135,8 +157,18 @@
       (log "test-max-inheritance(child) => ~A" result)
       ;; Should apply MAX over 10 and 99 = 99
       (assert-equal 99 result)
-      (log "Multiple applicable method short-form case OK.")
-      
-      (log "All tests passed successfully.")
-      t)))
+      (log "Multiple applicable method short-form case OK."))))
+
+(defun run-method-combination-tests ()
+  (log "Running method-combination tests...")
   
+    ;; BEGIN LONG FORM TESTS
+    (run-long-combination-tests)
+
+    ;; BEGIN SHORT FORM TESTS
+    (run-short-combination-tests)
+  
+  (log "All tests passed successfully.")
+      t)
+
+
