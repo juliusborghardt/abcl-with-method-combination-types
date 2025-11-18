@@ -474,8 +474,8 @@
 
       ;; MOP-BASED METHOD COMBINATIONS
       ;; Switch the method combination structure
-      (load (do-compile "combination-types-package.lisp"))
-      (load (do-compile "combination-types.lisp"))
+      ;(load (do-compile "combination-types-package.lisp"))
+      ;(load (do-compile "combination-types.lisp"))
       ;(load (do-compile "combination-types-init.lisp")) ;;fix me
       
             ;;; Classloader combine JAVA and THREADS abstractions

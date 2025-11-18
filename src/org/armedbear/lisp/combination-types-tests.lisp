@@ -1,10 +1,11 @@
 ;;;; ------------------------------------------------------------------
 ;;;; Test suite for portable method combination implementation
 ;;;; load with: :cl src/org/armedbear/lisp/combination-types-tests.lisp
+;;;; (method-combination-tests:run-symbol-bound-check)
 ;;;; ------------------------------------------------------------------
 
 (defpackage :method-combination-tests
-  (:use :cl :mop)
+  (:use :cl :mop :method-combination-types)
   (:export :run-method-combination-tests :run-symbol-bound-check
 	   :run-long-combination-tests :run-short-combination-tests))
 (in-package :method-combination-tests)
@@ -30,13 +31,17 @@
 	  update-instance-for-different-class
 	  add-method remove-method
 	  shared-initialize
-	  make-instance change-class method-combination
+	  make-instance change-class)
+do (log (format nil "~a" (list sym (fboundp sym)))))
+
+  (loop for class in 
+	  '(method-combination
 	  standard-method-combination
 	  short-method-combination
 	  long-method-combination
 	  generic-function standard-generic-function
 	  standard-class metaobject)
-	do (log (format nil "~a" (list sym (fboundp sym))))))
+	do (log (format nil "~a" (list class (find-class class nil))))))
 
 
 ;;; -------------------------------------------------------------------

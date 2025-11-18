@@ -65,16 +65,32 @@ combination class."))
 ;; singleton standard meth com, the one instance of this will be *standard-method-combination*
 ;; order of class options matters!
 (defclass standard-standard-method-combination (standard-method-combination)
-  ((type-name :accessor standard-standard-method-combination-type-name :initarg :type-name :initform "standard"))
+  ((type-name :accessor standard-standard-method-combination-type-name
+	      :initarg :type-name
+	      :initform "standard"))
   (:metaclass standard-method-combination-type))
-(defparameter *standard-method-combination* (make-instance 'standard-standard-method-combination))
 ;; for non-standard meth-coms, the pendant to this class will be anonymous
 
 
+;; defer instantiation to until after compile-time
+(defvar *standard-method-combination* nil
+  "The single standard method combination instance.")
 
-(defparameter **method-combination-types** (make-hash-table :test 'eq)
-  "The global method combination types hash table.
-This hash table maps names to method combination types.")
+(eval-when (:load-toplevel :execute)
+  (defparameter *standard-method-combination* (make-instance 'standard-standard-method-combination)))
+
+(eval-when (:load-toplevel :execute)
+  (setf *standard-method-combination*
+        (make-instance 'standard-standard-method-combination)))
+
+
+;; needed bc. uninitialized slot error?
+(defvar **method-combination-types** nil)
+
+(eval-when (:load-toplevel :execute)
+  (defparameter **method-combination-types** (make-hash-table :test 'eq)
+    "The global method combination types hash table.
+This hash table maps names to method combination types."))
 
 (defun find-method-combination-type (name &optional (errorp t))
   "Find a NAMEd method combination type.
@@ -235,7 +251,7 @@ combination type."
                  "has no qualifiers")
                 ((cdr qualifiers)
                  "has too many qualifiers")
-                (t
+                (t(boundp 'method-combination-types:find
                  (aver (not (short-method-combination-qualifier-p
                              type-name qualifier)))
                  "has an invalid qualifier"))))

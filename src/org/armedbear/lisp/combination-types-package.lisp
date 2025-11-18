@@ -5,14 +5,7 @@
 
 (defpackage :method-combination-types
   (:use :cl :mop)
-  (:import-from :mop
-   :funcallable-standard-class
-		:generic-function-method-combination
-   :long-method-combination)
-  (:export :find-method-combination* :change-method-combination
-	   :define-medium-method-combination-type
-	   :generic-function! :generic-function!-p :defgeneric!
-	   :call-with-combination :call/cb :install-#!-reader-macro
+  (:export :find-method-combination*
    :find-method-combination :define-method-combination
    :method-combination-type-name :substitute-method-combination
    :standard-method-combination :method-combination-type
