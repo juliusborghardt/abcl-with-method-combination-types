@@ -2,6 +2,8 @@
 
 (in-package :method-combination-types)
 
+#+lispworks(setf *handle-warn-on-redefinition* :quiet)
+
 (defclass standard-method-combination (metaobject) 
   ((options :accessor standard-method-combination-options :initarg :options :initform nil)
    (%generic-functions :accessor standard-method-combination-generic-functions :initarg :generic-functions :initform nil)))
@@ -113,6 +115,14 @@ The GENERIC-FUNCTION argument is ignored."
                 (funcall (method-combination-%constructor type)
                   options))))))
 
+(defun find-method-combination* (name &optional options)
+  (let ((type (find-method-combination-type name nil)))
+    (when type
+      (or (gethash options (method-combination-type-%cache type))
+          (setf (gethash options (method-combination-type-%cache type))
+                (funcall (method-combination-%constructor type)
+                  options))))))
+
 (defun load-defcombin
     (name new documentation &aux (old (find-method-combination-type name nil)))
   "Register NEW method combination type under NAME with DOCUMENTATION.
@@ -195,7 +205,6 @@ combination type."
 (defun load-short-defcombin
     (name operator identity-with-one-argument documentation
      mc-class mct-spec
-     source-location
      &aux (mc-class (find-class mc-class))
           (mct-class (find-class (if (symbolp mct-spec)
                                    mct-spec
@@ -217,7 +226,6 @@ combination type."
   ;; #### NOTE: we can't change-class class metaobjects, so we need to
   ;; recreate a brand new one.
   (let ((new (apply #'make-instance mct-class
-                    'source source-location
                     :direct-superclasses (list mc-class)
                     :documentation documentation
                     :type-name name
@@ -262,7 +270,7 @@ combination type."
       The method combination type ~S was defined with the short form ~
       of DEFINE-METHOD-COMBINATION and so requires all methods have ~
       either ~{the single qualifier ~S~^ or ~}.~@:>"
-     method gf why type-name (short-method-combination-qualifiers type-name))))
+     method gf why type-name (short-method-combination-qualifiers type-name)))))
 
 
 
@@ -316,12 +324,11 @@ combination type."
       ;; Return the LOAD form
       `(load-long-defcombin
         ',type-name ',documentation #',function ',lambda-list
-        ',args-option ',mc-class ',mct-spec nil)))) ; source-location omitted
-
+        ',args-option ',mc-class ',mct-spec)))) 
 
 (defun load-long-defcombin
     (name documentation function lambda-list args-lambda-list
-          mc-class mct-spec source-location
+          mc-class mct-spec
           &aux (mc-class (find-class mc-class))
                (mct-class (find-class (car mct-spec))))
   ;; basic class checks
@@ -337,7 +344,6 @@ combination type."
            mct-class))
   ;; Create the new method-combination-type instance
   (let ((new (apply #'make-instance mct-class
-                    :source source-location
                     :direct-superclasses (list mc-class)
                     :documentation documentation
                     :type-name name
@@ -407,7 +413,7 @@ combination type."
     (when (and doc-string-allowed
                (stringp (first body)))
       (setf documentation (pop body)))
-    ;; extract leading declarations
+    ;; extract leading declarations 
     (loop while (and (consp (first body))
                      (eq (caar body) 'declare))
           do (push (pop body) declarations))
@@ -434,6 +440,29 @@ combination type."
       ,maybe-error-clause
       (push .method. ,name))))
 
+(defun constant-form-value (form)
+  ;; adapted from SBCL
+  (cond
+    ;; literal self-evaluating objects
+    ((not (symbolp form)) form)
+
+    ;; keywords are constants
+    ((keywordp form) form)
+
+    ;; NIL and T
+    ((eq form nil) nil)
+    ((eq form t) t)
+
+    ;; quoted form: (quote X) or 'X
+    ((and (consp form)
+          (eq (car form) 'quote)
+          (consp (cdr form))
+          (null (cddr form)))
+     (cadr form))
+
+    (t
+     (error "Not a portable constant form: ~S" form))))
+
 
 (defun wrap-method-group-specifier-bindings
     (method-group-specifiers declarations real-body)
@@ -451,27 +480,19 @@ combination type."
           (let* ((specializer-cache (gensym))
                  (order-var (gensym "O"))
                  (order-constantp (constantp order))
-                 (order-value (and order-constantp (constant-form-value order))))
+                 ;; ---------------------- CHANGED LINE ----------------------
+                 (order-value (and order-constantp
+                                   (constant-form-value order))))
             (push name names)
             (push specializer-cache specializer-caches)
             (unless order-constantp
               (push `(,order-var ,order) order-vars))
             (let ((order-matters-test
                     (cond
-                      ;; It is reasonable to allow a single method
-                      ;; group of * to bypass all rules, as this is
-                      ;; explicitly stated in the standard.
                       ((and (eq (cadr method-group-specifier) '*)
                             (= nspecifiers 1))
                        nil)
-                      ;; an :ORDER value known at compile-time to be
-                      ;; NIL (an SBCL extension) also bypasses the
-                      ;; ordering checks.  (Other :ORDER values do
-                      ;; not.)
                       (order-constantp (not (eql order-value nil)))
-                      ;; otherwise, check the ORDER value at
-                      ;; method-combination time, bypassing ordering
-                      ;; checks if it is NIL.
                       (t `(not (eql ,order-var nil))))))
               (push (group-cond-clause name tests specializer-cache order-matters-test)
                     cond-clauses))
@@ -492,16 +513,16 @@ combination type."
                           ((nil :most-specific-last)))
                        order-cleanups))))))
       `(let (,@(nreverse names) ,@specializer-caches ,@order-vars)
-        (declare (ignorable ,@specializer-caches))
-        ,@declarations
-        (dolist (.method. .applicable-methods.)
-          (let ((.qualifiers. (method-qualifiers .method.))
-                (.specializers. (method-specializers .method.)))
-            (declare (ignorable .qualifiers. .specializers.))
-            (cond ,@(nreverse cond-clauses))))
-        ,@(nreverse required-checks)
-        ,@(nreverse order-cleanups)
-        ,@real-body))))
+         (declare (ignorable ,@specializer-caches))
+         ,@declarations
+         (dolist (.method. .applicable-methods.)
+           (let ((.qualifiers. (method-qualifiers .method.))
+                 (.specializers. (method-specializers .method.)))
+             (declare (ignorable .qualifiers. .specializers.))
+             (cond ,@(nreverse cond-clauses))))
+         ,@(nreverse required-checks)
+         ,@(nreverse order-cleanups)
+         ,@real-body))))
 
 
 ;; keep one?
@@ -710,7 +731,7 @@ combination type."
 
 
 (defmacro define-method-combination (&whole form name &rest args)
-  "Define a :meth-comb method combination."
+  "Define a MOP-based method combination (syntax unchanged)"
   (declare (ignore args)) ;; because whole form is passed to expander
   (unless (symbolp name)
     (error "DEFINE-METHOD-COMBINATION: name ~S must be a symbol." name))
@@ -733,12 +754,10 @@ combination type."
         (when (and doc-pair (not (stringp doc)))
           (error "~@<~S argument to the short form of ~S must be a string.~:@>"
                  :documentation 'define-method-combination))
-        ;; Expand to loader, pass nil for source-location.
         `(progn
            (load-short-defcombin ',name ',operator ',ioa
                                  ,(if doc-pair doc nil)
-                                 ',mc-class ',mct-class
-                                 nil)))))
+                                 ',mc-class ',mct-class)))))
 
 
 (defun substitute-method-combination (new old)

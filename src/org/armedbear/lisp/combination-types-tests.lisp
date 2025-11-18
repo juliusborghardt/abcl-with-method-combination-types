@@ -5,7 +5,7 @@
 ;;;; ------------------------------------------------------------------
 
 (defpackage :method-combination-tests
-  (:use :cl :mop :method-combination-types)
+  (:use :cl #-lispworks :mop #+lispworks :clos :method-combination-types)
   (:export :run-method-combination-tests :run-symbol-bound-check
 	   :run-long-combination-tests :run-short-combination-tests))
 (in-package :method-combination-tests)
