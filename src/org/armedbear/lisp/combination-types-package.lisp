@@ -4,7 +4,7 @@
 ;; adapted for ABCL by Julius Borghardt https://github.com/juliusborghardt
 
 (defpackage :method-combination-types
-  (:use :cl #-lispworks :mop #+lispworks :clos)
+  (:use :cl :cl-user #-lispworks :mop #+lispworks :clos)
   (:export :find-method-combination*
    :find-method-combination :define-method-combination
    :method-combination-type-name :substitute-method-combination

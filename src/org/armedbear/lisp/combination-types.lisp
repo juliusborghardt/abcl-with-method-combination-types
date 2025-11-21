@@ -5,7 +5,7 @@
 #+lispworks(setf *handle-warn-on-redefinition* :quiet)
 
 (defclass standard-method-combination (metaobject) 
-  ((options :accessor standard-method-combination-options :initarg :options :initform nil)
+  ((options :accessor method-combination-options :initarg :options :initform nil)
    (%generic-functions :accessor standard-method-combination-generic-functions :initarg :generic-functions :initform nil)))
 
 
@@ -43,6 +43,15 @@ combination class."))
 (defmethod validate-superclass ((x standard-method-combination-type)
                                 (y standard-class))
   t)
+
+(defmethod validate-superclass ((x standard-class)
+                                (y method-combination-type))
+  t)
+
+(defmethod validate-superclass ((x method-combination-type)
+                                (y standard-class))
+  t)
+
 
 (defclass short-method-combination-type (standard-method-combination-type)
   ((lambda-list :initform '(&optional (order :most-specific-first)))
@@ -110,12 +119,37 @@ found. Otherwise, return NIL."
 If no method combination type exists by that NAME, return NIL.
 Otherwise, a (potentially new) method combination object is returned.
 The GENERIC-FUNCTION argument is ignored."
-  (let ((type (find-method-combination-type name nil)))
+  (let ((type (or (find-method-combination-type name nil)
+
+		  ;;Fallback: ignore packages and search by name
+		  (loop for key being the hash-keys of **method-combination-types**
+			for value being the hash-values of **method-combination-types**
+			when (string= (string key) (symbol-name name))
+			  do (return value)))))
     (when type
       (or (gethash options (method-combination-type-%cache type))
           (setf (gethash options (method-combination-type-%cache type))
                 (funcall (method-combination-%constructor type)
-                  options))))))
+			 options))))))
+
+(defmethod find-method-combination
+    ((generic-function null) name options)
+  "Find a method combination object for type NAME and options.
+If no method combination type exists by that NAME, return NIL.
+Otherwise, a (potentially new) method combination object is returned.
+The GENERIC-FUNCTION argument is ignored."
+  (let ((type (or (find-method-combination-type name nil)
+
+		  ;;Fallback: ignore packages and search by name
+		  (loop for key being the hash-keys of **method-combination-types**
+			for value being the hash-values of **method-combination-types**
+			when (string= (string key) (symbol-name name))
+			  do (return value)))))
+     (when type
+       (or (gethash options (method-combination-type-%cache type))
+          (setf (gethash options (method-combination-type-%cache type))
+                (funcall (method-combination-%constructor type)
+			 options))))))
 
 (defun find-method-combination* (name &optional options)
   (let ((type (find-method-combination-type name nil)))
@@ -161,36 +195,76 @@ The GENERIC-FUNCTION argument is ignored."
   (apply #'call-next-method gf args))
 
 
+(defun normalize-method-combination-initarg (mc)
+  (list
+   (method-combination-type-name
+    (cond
+      ;; Already a method-combination instance
+      ((typep mc 'method-combination)
+       mc)
 
-#+nil(defmethod clos:ensure-generic-function-using-class
-    :around ((gf null) function-spec &rest args)
+      ;; A method-combination-type: create an instance with no options
+      ((typep mc 'method-combination-type)
+       (find-method-combination*
+	(method-combination-type-name mc)))
 
-  ;; ARGS is *not guaranteed* to be a plist in all LW call sites,
-  ;; so we must NOT use &key here. Instead, scan manually.
-  (let* ((plist args)
-         (mc-pos (position :method-combination plist :test #'eq)))
-    (when mc-pos
-      (let* ((value-pos (1+ mc-pos))
-             (method-combination (nth value-pos plist))
-             (mc-name (if (symbolp method-combination)
-                          method-combination
-                          (car method-combination)))
-             (type (find-method-combination-type mc-name nil)))
-        (when type
-          ;; Create or reuse the single LW-style instance
-          (let ((mc-instance
-                 (or (gethash nil (method-combination-type-%cache type))
-                     (setf (gethash nil (method-combination-type-%cache type))
-                           (funcall (method-combination-%constructor type)
-                                    nil)))))
-            ;; Mutate the initargs so LW sees the instance instead of the symbol
-            (setf (nth value-pos plist) mc-instance)
-            (setf args plist)))))  ; update the args we pass on
+      ;; A list form
+      ((consp mc)
+       (let* ((head    (car mc))
+              (options (cdr mc)))
+	 (cond
+           ;; ( <method-combination-type> . options )
+           ((typep head 'method-combination-type)
+            (find-method-combination*
+             (method-combination-type-name head)
+             options))
 
-  ;; Always pass FUNCTION-SPEC along, LW needs it.
-  (apply #'call-next-method gf function-spec args)))
+           ;; ( <symbol> . options )
+           ((symbolp head)
+            (let ((type (find-method-combination-type head nil)))
+              (if type
+                  (find-method-combination*
+                   (method-combination-type-name type)
+                   options)
+                  mc)))
+
+           (t mc))))
+
+      ;; symbol: resolve its type
+      ((symbolp mc)
+       (let ((type (find-method-combination-type mc nil)))
+	 (if type
+             (find-method-combination*
+              (method-combination-type-name type))
+             mc)))
+
+      (t mc)))))
 
 
+#|
+(defmethod ensure-generic-function-using-class
+    :around ((gf generic-function) function-name &rest initargs)
+  (let ((mc-name (getf initargs :method-combination)))
+    (when mc-name
+      (let ((mc (normalize-method-combination-initarg
+		 (getf initargs :method-combination))))
+	(setf initargs (copy-list initargs))
+	(setf (getf initargs :method-combination) mc-name)))
+    (apply #'call-next-method gf function-name initargs)))
+
+
+(defmethod ensure-generic-function-using-class
+    :around ((gf null) function-name &rest initargs)
+  (let ((mc-name (getf initargs :method-combination)))
+    (when mc-name
+      (let ((mc (normalize-method-combination-initarg
+		 (getf initargs :method-combination))))
+	(setf initargs (copy-list initargs))
+	(setf (getf initargs :method-combination) mc-name)))
+    (apply #'call-next-method gf function-name initargs)))
+
+
+|#
 
 
 (defun load-defcombin
@@ -418,6 +492,9 @@ combination type."
            mct-class))
   ;; Create the new method-combination-type instance
   (let ((new (apply #'make-instance mct-class
+		    :class-name nil ;;?
+		    :metaclass mct-class  ;;?
+		    
                     :direct-superclasses (list mc-class)
                     :documentation documentation
                     :type-name name
@@ -425,10 +502,37 @@ combination type."
                     :args-lambda-list args-lambda-list
                     :function function
                     (cdr mct-spec))))
+
+
+    #|
+    (setq debug (make-instance (make-instance new :options '(:most-specific-first))))
+
+    
+    (error "Argumente waren :direct-superclasses ~a :type-name ~a lambda-list ~a args-lambda-list ~a function ~a mct-class ~a~%    Instanz ist ~a     type der instanz ist ~a      class der instanz ist ~a     object der instanz ist ~a    type des objektes ist ~a      classe des objektes ist ~a" (list mc-class)  name lambda-list args-lambda-list function mct-spec new (type-of new) (class-of new) debug (type-of debug) (class-of debug))
+    
+    ;;(inspect debug)
+    |#
+    
     ;; install constructor
     (setf (slot-value new '%constructor)
           (lambda (options)
-            (apply #'make-instance new :options options)))
+            (apply #'make-instance new :options (or options '(:most-specific-first)))))
+
+
+    #| DEBUG
+        (let ((class new))
+      (assert (typep class 'class))
+      (assert (eq (class-of class) mct-class))
+      (assert (system::subclassp class mc-class))
+
+      (let ((inst (funcall (method-combination-%constructor new) '(:x))))
+	(assert (typep inst 'standard-method-combination))
+	(assert (typep inst new))
+	(assert (not (typep inst mct-class)))))
+    |#
+    
+    ;; no given options creates odd args list
+    ;; this is a dirty fix, but it works
     (load-defcombin name new documentation)))
 
 
@@ -604,9 +708,6 @@ combination type."
   (do ((current l (cdr current)))
       ((atom current) nil)
     (when (eq (car current) e) (return current))))
-
-#+nil(defun memq (item list)
-  (member item list :test #'eq))
 
 (defun parse-method-group-specifier (method-group-specifier)
   (unless (symbolp (car method-group-specifier))
@@ -804,40 +905,9 @@ combination type."
   `(progn ,@body))
 
 
-#+nil(defmacro define-method-combination (&whole form name &rest args)
-  "Define a MOP-based method combination (syntax unchanged)"
-  (declare (ignore args)) ;; because whole form is passed to expander
-  (unless (symbolp name)
-    (error "DEFINE-METHOD-COMBINATION: name ~S must be a symbol." name))
-  ;; Distinguish long vs. short form
-  (if (and (cddr form) (listp (caddr form)))
-      ;; Long form: delegate to  expander
-      (expand-long-defcombin form)
-      ;; Short form: parse the plist
-      (let* ((plist    (cddr form))
-             (doc-pair (member :documentation plist :test #'eq))
-             (doc      (and doc-pair (cadr doc-pair)))
-             (ioa-pair (member :identity-with-one-argument plist :test #'eq))
-             (ioa      (and ioa-pair (cadr ioa-pair)))
-             (op-pair  (member :operator plist :test #'eq))
-             (operator (if op-pair (cadr op-pair) name))
-             (mc-pair  (member :method-combination-class plist :test #'eq))
-             (mc-class (if mc-pair (cadr mc-pair) 'short-method-combination))
-             (mct-pair (member :method-combination-type-class plist :test #'eq))
-             (mct-class (if mct-pair (cadr mct-pair) 'short-method-combination-type)))
-        (when (and doc-pair (not (stringp doc)))
-          (error "~@<~S argument to the short form of ~S must be a string.~:@>"
-                 :documentation 'define-method-combination))
-        `(progn
-           (load-short-defcombin ',name ',operator ',ioa
-                                 ,(if doc-pair doc nil)
-                                 ',mc-class ',mct-class)))))
-
-
-
 ;; v2 
 (defmacro define-method-combination (&whole form name . args)
-  (declare (ignore args))
+  (declare (ignore args name))
   `(progn
      ,(if (and (cddr form) (listp (caddr form)))
         (expand-long-defcombin form)
@@ -855,6 +925,8 @@ combination type."
 (defun substitute-method-combination (new old)
   "Transfer the generic-function cache from OLD to NEW and update all
 affected generic functions."
+  ;; currently broken!!
+  
   ;; copy the cache
   (setf (slot-value new '%generic-functions)
         (slot-value old '%generic-functions))
