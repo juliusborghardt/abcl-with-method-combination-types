@@ -11,5 +11,6 @@
    :standard-method-combination :method-combination-type
    :standard-method-combination-type :long-method-combination
    :short-method-combination :short-method-combination-type
-   :long-method-combination-type :standard-standard-method-combination))
+   :long-method-combination-type :standard-standard-method-combination
+   :**method-combination-types** :find-method-combination-type))
 

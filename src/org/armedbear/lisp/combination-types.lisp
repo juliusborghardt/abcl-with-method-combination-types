@@ -85,9 +85,10 @@ combination class."))
   (setf *standard-method-combination*
         (make-instance 'standard-standard-method-combination)))
 
-
-;; needed bc. uninitialized slot error?
+;; (inspect **method-combination-types**)
 (defvar **method-combination-types** nil)
+
+
 
 (eval-when (:load-toplevel :execute)
   (defparameter **method-combination-types** (make-hash-table :test 'eq)
@@ -98,6 +99,7 @@ This hash table maps names to method combination types."))
   "Find a NAMEd method combination type.
 If ERRORP (the default), throw an error if no such method combination type is
 found. Otherwise, return NIL."
+  ;; Test is 'eq, so symbols from different packages, like the test package, are not found!
   (or (gethash name **method-combination-types**)
       (when errorp
         (error "There is no method combination type named ~A." name))))
@@ -122,6 +124,74 @@ The GENERIC-FUNCTION argument is ignored."
           (setf (gethash options (method-combination-type-%cache type))
                 (funcall (method-combination-%constructor type)
                   options))))))
+
+
+#+lispworks(defmethod clos:ensure-generic-function-using-class
+           :around ((gf null) FUNCTION-SPEC &rest args &key method-combination method-combination-p &allow-other-keys)
+
+  ;; If the user supplied :method-combination, normalize it.
+  (when method-combination-p
+    (let* ((mc-name
+            ;; in LW :method-combination may be:
+            ;;   my-sum   or   (my-sum . options)
+            (if (symbolp method-combination)
+              method-combination
+              (car method-combination)))
+           (type
+            (find-method-combination-type mc-name nil)))
+
+      (when type
+        ;; Now make or fetch the MC-instance (LW wants a single instance per type)
+        (let* ((mc-instance
+                (or (gethash nil (method-combination-type-%cache type))
+                    (setf (gethash nil (method-combination-type-%cache type))
+                          (funcall (method-combination-%constructor type)
+                                   nil)))))
+
+          (let ((new-initargs (copy-list args)))
+            (loop for (key val) on new-initargs by #'cddr
+                  when (eq key :method-combination)
+                    do (setf (cadr (member key new-initargs)) mc-instance))
+            ;; Use the updated initargs
+            (return-from clos:ensure-generic-function-using-class
+              (apply #'call-next-method gf new-initargs)))))))
+
+
+  ;; Pass normalized initargs to the real method
+  (apply #'call-next-method gf args))
+
+
+
+#+nil(defmethod clos:ensure-generic-function-using-class
+    :around ((gf null) function-spec &rest args)
+
+  ;; ARGS is *not guaranteed* to be a plist in all LW call sites,
+  ;; so we must NOT use &key here. Instead, scan manually.
+  (let* ((plist args)
+         (mc-pos (position :method-combination plist :test #'eq)))
+    (when mc-pos
+      (let* ((value-pos (1+ mc-pos))
+             (method-combination (nth value-pos plist))
+             (mc-name (if (symbolp method-combination)
+                          method-combination
+                          (car method-combination)))
+             (type (find-method-combination-type mc-name nil)))
+        (when type
+          ;; Create or reuse the single LW-style instance
+          (let ((mc-instance
+                 (or (gethash nil (method-combination-type-%cache type))
+                     (setf (gethash nil (method-combination-type-%cache type))
+                           (funcall (method-combination-%constructor type)
+                                    nil)))))
+            ;; Mutate the initargs so LW sees the instance instead of the symbol
+            (setf (nth value-pos plist) mc-instance)
+            (setf args plist)))))  ; update the args we pass on
+
+  ;; Always pass FUNCTION-SPEC along, LW needs it.
+  (apply #'call-next-method gf function-spec args)))
+
+
+
 
 (defun load-defcombin
     (name new documentation &aux (old (find-method-combination-type name nil)))
@@ -325,6 +395,10 @@ combination type."
       `(load-long-defcombin
         ',type-name ',documentation #',function ',lambda-list
         ',args-option ',mc-class ',mct-spec)))) 
+
+
+
+
 
 (defun load-long-defcombin
     (name documentation function lambda-list args-lambda-list
@@ -730,7 +804,7 @@ combination type."
   `(progn ,@body))
 
 
-(defmacro define-method-combination (&whole form name &rest args)
+#+nil(defmacro define-method-combination (&whole form name &rest args)
   "Define a MOP-based method combination (syntax unchanged)"
   (declare (ignore args)) ;; because whole form is passed to expander
   (unless (symbolp name)
@@ -759,6 +833,24 @@ combination type."
                                  ,(if doc-pair doc nil)
                                  ',mc-class ',mct-class)))))
 
+
+
+;; v2 
+(defmacro define-method-combination (&whole form name . args)
+  (declare (ignore args))
+  `(progn
+     ,(if (and (cddr form) (listp (caddr form)))
+        (expand-long-defcombin form)
+        (let* ((type-name (cadr form))
+               (ioa (getf (cddr form) :identity-with-one-argument nil))
+               (operator (getf (cddr form) :operator type-name))
+               (mc-class (getf (cddr form) :method-combination-class
+                               'short-method-combination))
+               (mct-class (getf (cddr form) :method-combination-type-class
+                                'short-method-combination-type)))
+          `(load-short-defcombin ',type-name ',operator ',ioa
+                                 ,nil
+                                 ',mc-class ',mct-class)))))
 
 (defun substitute-method-combination (new old)
   "Transfer the generic-function cache from OLD to NEW and update all
