@@ -703,7 +703,7 @@ combination type."
          ,@real-body))))
 
 
-;; keep one?
+;; like in sbcl
 (defun memq (e l)
   (do ((current l (cdr current)))
       ((atom current) nil)
@@ -922,6 +922,8 @@ combination type."
                                  ,nil
                                  ',mc-class ',mct-class)))))
 
+
+#|
 (defun substitute-method-combination (new old)
   "Transfer the generic-function cache from OLD to NEW and update all
 affected generic functions."
@@ -935,3 +937,4 @@ affected generic functions."
              (declare (ignore _))
              (setf (generic-function-method-combination gf) new))
            (slot-value new '%generic-functions)))
+|#

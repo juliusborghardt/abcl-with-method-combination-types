@@ -301,8 +301,14 @@
       (load (do-compile "clos.lisp"))
       (load (do-compile "mop.lisp"))
 
-      
-
+      #|
+      (handler-case
+	  (progn
+      (do-compile "combination-types-package.lisp"))
+      (do-compile "combination-types.lisp")))
+	(error (e)
+	  (format t "~&FAILED TO LOAD METHOD COMBINATION SYSTEM!~%")
+	  (abort)))|#
 
       
       ;; Order matters for these files.
@@ -474,8 +480,9 @@
 
       ;; MOP-BASED METHOD COMBINATIONS
       ;; Switch the method combination structure
-      ;(load (do-compile "combination-types-package.lisp"))
-      ;(load (do-compile "combination-types.lisp"))
+      ;;(load (do-compile "combination-types-package.lisp"))
+      ;;(load (do-compile "combination-types.lisp"))
+      (load (do-compile "combination-types-load.lisp"))
       ;(load (do-compile "combination-types-init.lisp")) ;;fix me
       
             ;;; Classloader combine JAVA and THREADS abstractions
@@ -503,6 +510,8 @@
         :extract nil)
       (do-compile "autoloads.lisp"
         :extract nil))
+      ;(do-compile "combination-types-package.lisp")
+      ;(do-compile "combination-types.lisp"))
     t))
 
 (defun compile-system (&key quit (zip t) (cls-ext *compile-file-class-extension*) (abcl-ext *compile-file-type*) output-path)

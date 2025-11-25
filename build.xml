@@ -259,9 +259,10 @@ For help on the automatic tests available, use the Ant target 'help.test'.
     <patternset id="abcl.source.lisp.fasls">
       <patternset refid="abcl.source.lisp"/>
 
-      <!-- Combination types -->
+      <!-- Combination types
       <include name="org/armedbear/lisp/combination-types-package.lisp"/>
       <include name="org/armedbear/lisp/combination-types.lisp"/>
+      -->
       
       <exclude name="org/armedbear/lisp/scripting/**/*.lisp"/>
       <exclude name="org/armedbear/lisp/boot.lisp"/>
