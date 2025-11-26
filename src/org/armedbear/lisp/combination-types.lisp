@@ -396,7 +396,7 @@ combination type."
         (make-long-method-combination-function
          type-name lambda-list method-group-specifiers args-option gf-var
          body)
-      ;; Return the LOAD form
+      ;; Return the load form
       `(load-long-defcombin
         ',type-name ',documentation #',function ',lambda-list
         ',args-option ',mc-class ',mct-spec)))) 
@@ -485,13 +485,12 @@ combination type."
 (defun make-long-method-combination-function
     (type-name lambda-list method-group-specifiers args-option gf-var body)
   (declare (ignore type-name))
-  ;; Use a portable PARSE-BODY
   (multiple-value-bind (real-body declarations documentation)
       (parse-body* body t)
     (let ((wrapped-body
             (wrap-method-group-specifier-bindings
              method-group-specifiers declarations real-body)))
-      ;; optional generic-function variable binding
+      ;; optional 
       (when gf-var
         (push `(,gf-var .generic-function.) (cadr wrapped-body)))
       ;; handle :arguments option
@@ -589,7 +588,6 @@ combination type."
           (let* ((specializer-cache (gensym))
                  (order-var (gensym "O"))
                  (order-constantp (constantp order))
-                 ;; ---------------------- CHANGED LINE ----------------------
                  (order-value (and order-constantp
                                    (constant-form-value order))))
             (push name names)
