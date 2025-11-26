@@ -1,8 +1,8 @@
-;; Didier's system as a non-internal package
+;; The main file of the MOP-based method combination system for ABCL
+;; by Julius Borghardt, based on a former implementation by Didier Verna
 
 (in-package :method-combination-types)
 
-#+lispworks(setf *handle-warn-on-redefinition* :quiet)
 
 (defclass standard-method-combination (metaobject) 
   ((options :accessor method-combination-options :initarg :options :initform nil)
@@ -11,7 +11,6 @@
 
 (defclass short-method-combination (standard-method-combination) ())
 (defclass long-method-combination (standard-method-combination) ())
-
 
 
 ;; these are added in as meta classes
@@ -28,12 +27,6 @@
 It is the base class for short and long method combination types metaclasses.
 This only class directly implemented as this class is the standard method
 combination class."))
-
-
-#|
-(defmethod initialize-instance :after ((obj standard-method-combination-type) &rest initargs &key &allow-other-keys)
-  (setf (method-combination-%constructor obj) (lambda () (make-instance (class-name (class-of obj))))))
-|#
 
 
 (defmethod validate-superclass ((x standard-method-combination)
@@ -74,7 +67,6 @@ combination class."))
   (identity-with-one-argument :accessor medium-method-combination-type-identity-with-one-argument :initarg :identity-with-one-argument :initform nil)))
 
 ;; singleton standard meth com, the one instance of this will be *standard-method-combination*
-;; order of class options matters!
 (defclass standard-standard-method-combination (standard-method-combination)
   ((type-name :accessor standard-standard-method-combination-type-name
 	      :initarg :type-name
@@ -160,41 +152,6 @@ The GENERIC-FUNCTION argument is ignored."
                   options))))))
 
 
-#+lispworks(defmethod clos:ensure-generic-function-using-class
-           :around ((gf null) FUNCTION-SPEC &rest args &key method-combination method-combination-p &allow-other-keys)
-
-  ;; If the user supplied :method-combination, normalize it.
-  (when method-combination-p
-    (let* ((mc-name
-            ;; in LW :method-combination may be:
-            ;;   my-sum   or   (my-sum . options)
-            (if (symbolp method-combination)
-              method-combination
-              (car method-combination)))
-           (type
-            (find-method-combination-type mc-name nil)))
-
-      (when type
-        ;; Now make or fetch the MC-instance (LW wants a single instance per type)
-        (let* ((mc-instance
-                (or (gethash nil (method-combination-type-%cache type))
-                    (setf (gethash nil (method-combination-type-%cache type))
-                          (funcall (method-combination-%constructor type)
-                                   nil)))))
-
-          (let ((new-initargs (copy-list args)))
-            (loop for (key val) on new-initargs by #'cddr
-                  when (eq key :method-combination)
-                    do (setf (cadr (member key new-initargs)) mc-instance))
-            ;; Use the updated initargs
-            (return-from clos:ensure-generic-function-using-class
-              (apply #'call-next-method gf new-initargs)))))))
-
-
-  ;; Pass normalized initargs to the real method
-  (apply #'call-next-method gf args))
-
-
 (defun normalize-method-combination-initarg (mc)
   (list
    (method-combination-type-name
@@ -239,32 +196,6 @@ The GENERIC-FUNCTION argument is ignored."
              mc)))
 
       (t mc)))))
-
-
-#|
-(defmethod ensure-generic-function-using-class
-    :around ((gf generic-function) function-name &rest initargs)
-  (let ((mc-name (getf initargs :method-combination)))
-    (when mc-name
-      (let ((mc (normalize-method-combination-initarg
-		 (getf initargs :method-combination))))
-	(setf initargs (copy-list initargs))
-	(setf (getf initargs :method-combination) mc-name)))
-    (apply #'call-next-method gf function-name initargs)))
-
-
-(defmethod ensure-generic-function-using-class
-    :around ((gf null) function-name &rest initargs)
-  (let ((mc-name (getf initargs :method-combination)))
-    (when mc-name
-      (let ((mc (normalize-method-combination-initarg
-		 (getf initargs :method-combination))))
-	(setf initargs (copy-list initargs))
-	(setf (getf initargs :method-combination) mc-name)))
-    (apply #'call-next-method gf function-name initargs)))
-
-
-|#
 
 
 (defun load-defcombin
@@ -393,7 +324,7 @@ combination type."
     (load-defcombin name new documentation)))
 
 
-#++(defmethod invalid-qualifiers
+#+nil(defmethod invalid-qualifiers
     ((gf generic-function) (combin short-method-combination) method)
   (let* ((qualifiers (method-qualifiers method))
          (qualifier (first qualifiers))
@@ -492,8 +423,8 @@ combination type."
            mct-class))
   ;; Create the new method-combination-type instance
   (let ((new (apply #'make-instance mct-class
-		    :class-name nil ;;?
-		    :metaclass mct-class  ;;?
+		    :class-name nil ;;anonymous!!
+		    :metaclass mct-class
 		    
                     :direct-superclasses (list mc-class)
                     :documentation documentation
@@ -923,7 +854,7 @@ combination type."
                                  ',mc-class ',mct-class)))))
 
 
-#|
+#|    ;;not needed anymore, keeping for now
 (defun substitute-method-combination (new old)
   "Transfer the generic-function cache from OLD to NEW and update all
 affected generic functions."
