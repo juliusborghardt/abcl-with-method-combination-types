@@ -399,7 +399,7 @@ combination type."
       ;; Return the load form
       `(load-long-defcombin
         ',type-name ',documentation #',function ',lambda-list
-        ',args-option ',mc-class ',mct-spec)))) 
+        ',args-option ',mc-class ',mct-spec))))
 
 
 

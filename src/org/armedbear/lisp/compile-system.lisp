@@ -479,7 +479,7 @@
 
 
       ;; MOP-BASED METHOD COMBINATIONS
-      (load (do-compile "combination-types-load.lisp"))\
+      (load (do-compile "combination-types-load.lisp"))
       ;;compile the loader file to install rc hook
       
             ;;; Classloader combine JAVA and THREADS abstractions
