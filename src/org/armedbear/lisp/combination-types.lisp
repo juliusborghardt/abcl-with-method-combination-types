@@ -1,12 +1,20 @@
 ;; The main file of the MOP-based method combination system for ABCL
 ;; by Julius Borghardt, based on a former implementation by Didier Verna
 
+;; :cl src/org/armedbear/lisp/combination-types-init.lisp
+
+
+
 (in-package :method-combination-types)
 
-
-(defclass standard-method-combination (metaobject) 
+;;(defclass method-combination (metaobject) ())
+(defclass standard-method-combination (method-combination) 
   ((options :accessor method-combination-options :initarg :options :initform nil)
-   (%generic-functions :accessor standard-method-combination-generic-functions :initarg :generic-functions :initform nil)))
+   (%generic-functions :accessor standard-method-combination-generic-functions :initarg :generic-functions :initform nil)
+
+   ;;this is a concession we have to make, unfortunately
+   ;;the only alternative would be an early class with name that is then switched out
+   (name :accessor method-combination-name :initarg :name :initform nil)))
 
 
 (defclass short-method-combination (standard-method-combination) ())
@@ -28,7 +36,7 @@ It is the base class for short and long method combination types metaclasses.
 This only class directly implemented as this class is the standard method
 combination class."))
 
-
+;; allow class structure definition
 (defmethod validate-superclass ((x standard-method-combination)
                                 (y standard-class))
   t)
@@ -43,6 +51,22 @@ combination class."))
 
 (defmethod validate-superclass ((x method-combination-type)
                                 (y standard-class))
+  t)
+
+
+
+;;validate instances as MCs
+(defmethod validate-superclass ((new standard-method-combination)
+                                (old method-combination))
+  t)
+(defmethod validate-superclass ((new short-method-combination)
+                                (old (eql (find-class 'method-combination))))
+  t)
+(defmethod validate-superclass ((new long-method-combination)
+                                (old (eql (find-class 'method-combination))))
+  t)
+(defmethod validate-superclass ((new (eql (find-class 'method-combination)))
+                                (old standard-method-combination))
   t)
 
 
@@ -102,6 +126,12 @@ If ERRORP (the default), throw an error if no such method combination type is
 found. Otherwise, return NIL."
   ;; Test is 'eq, so symbols from different packages, like the test package, are not found!
   (or (gethash name **method-combination-types**)
+
+      (loop for key being the hash-keys of **method-combination-types**
+			for value being the hash-values of **method-combination-types**
+			when (string= (string key) (symbol-name name))
+			  return value)
+     
       (when errorp
         (error "There is no method combination type named ~A." name))))
 
@@ -117,7 +147,7 @@ The GENERIC-FUNCTION argument is ignored."
 		  (loop for key being the hash-keys of **method-combination-types**
 			for value being the hash-values of **method-combination-types**
 			when (string= (string key) (symbol-name name))
-			  do (return value)))))
+			  return value))))
     (when type
       (or (gethash options (method-combination-type-%cache type))
           (setf (gethash options (method-combination-type-%cache type))
@@ -136,7 +166,7 @@ The GENERIC-FUNCTION argument is ignored."
 		  (loop for key being the hash-keys of **method-combination-types**
 			for value being the hash-values of **method-combination-types**
 			when (string= (string key) (symbol-name name))
-			  do (return value)))))
+			  return value))))
      (when type
        (or (gethash options (method-combination-type-%cache type))
           (setf (gethash options (method-combination-type-%cache type))
@@ -151,7 +181,7 @@ The GENERIC-FUNCTION argument is ignored."
                 (funcall (method-combination-%constructor type)
                   options))))))
 
-
+#| deprecated
 (defun normalize-method-combination-initarg (mc)
   (list
    (method-combination-type-name
@@ -195,7 +225,9 @@ The GENERIC-FUNCTION argument is ignored."
               (method-combination-type-name type))
              mc)))
 
-      (t mc)))))
+(t mc)))))
+
+|#
 
 
 (defun load-defcombin
@@ -265,6 +297,8 @@ combination type."
      &key options &allow-other-keys
      &aux (name (method-combination-type-name instance)))
   "Check the validity of OPTIONS for a short method combination INSTANCE."
+  (unless (listp options)
+    (error "Illegal: :options is not a list but: ~a" options))
   (when (cdr options)
     (method-combination-error
      "Illegal options to the ~S short method combination.~%~
@@ -301,6 +335,8 @@ combination type."
   ;; #### NOTE: we can't change-class class metaobjects, so we need to
   ;; recreate a brand new one.
   (let ((new (apply #'make-instance mct-class
+		    :class-name name
+		    :metaclass mct-class
                     :direct-superclasses (list mc-class)
                     :documentation documentation
                     :type-name name
@@ -320,11 +356,17 @@ combination type."
               ;; explicitly with :MOST-SPECIFIC-FIRST, we will end up with 2
               ;; different yet identical instances (so possibly 3 in total if
               ;; :MOST-SPECIFIC-LAST appears as well). Not such a big deal.
-              new :options (or options '(:most-specific-first)))))
+		     new :options (cond
+				    ((null options)
+				     '(:most-specific-first))
+				    ((atom options)
+				     (list options))
+				    (t
+				     options)))))
     (load-defcombin name new documentation)))
 
 
-#+nil(defmethod invalid-qualifiers
+(defmethod invalid-qualifiers
     ((gf generic-function) (combin short-method-combination) method)
   (let* ((qualifiers (method-qualifiers method))
          (qualifier (first qualifiers))
@@ -334,7 +376,7 @@ combination type."
                  "has no qualifiers")
                 ((cdr qualifiers)
                  "has too many qualifiers")
-                (t(boundp 'method-combination-types:find
+                (t
                  (aver (not (short-method-combination-qualifier-p
                              type-name qualifier)))
                  "has an invalid qualifier"))))
@@ -345,11 +387,11 @@ combination type."
       The method combination type ~S was defined with the short form ~
       of DEFINE-METHOD-COMBINATION and so requires all methods have ~
       either ~{the single qualifier ~S~^ or ~}.~@:>"
-     method gf why type-name (short-method-combination-qualifiers type-name)))))
+     method gf why type-name (short-method-combination-qualifiers type-name))))
 
 
 
-(defmethod compute-primary-methods ((gf generic-function)
+#+nil(defmethod compute-primary-methods ((gf generic-function)
                                     (combin short-method-combination)
                                     applicable-methods)
   (let ((type-name (method-combination-type-name combin)))
@@ -358,6 +400,19 @@ combination type."
                                       (null (cdr qs)))))
                    applicable-methods)))
 
+;; same but with looser test
+(defmethod compute-primary-methods ((gf generic-function)
+                                    (combin short-method-combination)
+                                    applicable-methods)
+  (let* ((type-name (method-combination-type-name combin))
+         (type-name-string (symbol-name type-name)))
+    (remove-if-not
+     (lambda (m)
+       (let ((qs (method-qualifiers m)))
+         (and qs
+              (string= (symbol-name (car qs)) type-name-string)
+              (null (cdr qs)))))
+     applicable-methods)))
 
 ;; ------------------------
 ;; Long method combinations
@@ -447,7 +502,15 @@ combination type."
     ;; install constructor
     (setf (slot-value new '%constructor)
           (lambda (options)
-            (apply #'make-instance new :options (or options '(:most-specific-first)))))
+            (apply #'make-instance new
+		   ;;abcl really want this to be a list
+		   :options (list (cond
+			      ((null options)
+			       '(:most-specific-first))
+			      ((atom options)
+			       (list options))
+			      (t
+			       options))))))
 
 
     #| DEBUG
@@ -459,7 +522,10 @@ combination type."
       (let ((inst (funcall (method-combination-%constructor new) '(:x))))
 	(assert (typep inst 'standard-method-combination))
 	(assert (typep inst new))
-	(assert (not (typep inst mct-class)))))
+    (assert (not (typep inst mct-class)))))
+
+    (trace find-method-combination make-instance)
+
     |#
     
     ;; no given options creates odd args list
@@ -827,12 +893,12 @@ combination type."
                            values)))))
 
 
-
+#|
 (defmacro with-single-package-locked-error (options &body body)
   "Just incase this needs to exist"
   (declare (ignore options))
   `(progn ,@body))
-
+|#
 
 ;; v2 
 (defmacro define-method-combination (&whole form name . args)

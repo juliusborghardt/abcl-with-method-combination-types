@@ -13,5 +13,6 @@
    :short-method-combination :short-method-combination-type
    :long-method-combination-type :standard-standard-method-combination
    :**method-combination-types** :find-method-combination-type
-   :install-mc-init-file))
+   :install-mc-init-file :short-method-combination
+   :long-method-combination))
 
