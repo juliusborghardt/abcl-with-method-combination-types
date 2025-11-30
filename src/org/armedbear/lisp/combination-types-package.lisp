@@ -5,6 +5,9 @@
 
 (defpackage :method-combination-types
   (:use :cl :cl-user #-lispworks :mop #+lispworks :clos)
+  (:import-from :mop
+   :method-combination :short-method-combination
+   :long-method-combination :standard-method-combination)
   (:export :find-method-combination*
    :find-method-combination :define-method-combination
    :method-combination-type-name :substitute-method-combination
@@ -14,5 +17,11 @@
    :long-method-combination-type :standard-standard-method-combination
    :**method-combination-types** :find-method-combination-type
    :install-mc-init-file :short-method-combination
-   :long-method-combination))
+   :long-method-combination :method-combination-name
+   :method-combination-type-name
+   :type-name :operator :function
+	   :%function :lambda-list
+   :make-long-method-combination-function :%make-long-method-combination-function
+   :long-method-combination-function
+   ))
 

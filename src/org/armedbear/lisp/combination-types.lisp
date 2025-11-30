@@ -5,22 +5,51 @@
 
 
 
+;;(in-package :mop)
 (in-package :method-combination-types)
-
 ;;(defclass method-combination (metaobject) ())
+#|
 (defclass standard-method-combination (method-combination) 
-  ((options :accessor method-combination-options :initarg :options :initform nil)
-   (%generic-functions :accessor standard-method-combination-generic-functions :initarg :generic-functions :initform nil)
+  ((options :initarg :options :initform nil)
+   (%generic-functions :initarg :generic-functions :initform nil)))
+|#
 
-   ;;this is a concession we have to make, unfortunately
-   ;;the only alternative would be an early class with name that is then switched out
-   (name :accessor method-combination-name :initarg :name :initform nil)))
+(defmethod method-combination-%generic-functions
+    ((combination standard-method-combination))
+  (slot-value combination 'mop::%generic-functions))
+
+(defmethod standard-method-generic-functions
+    ((combination standard-method-combination))
+  (slot-value combination 'mop::%generic-functions))
+
+(defmethod method-combination-options
+    ((combination standard-method-combination))
+  (slot-value combination 'mop::options))
+
+(defmethod method-combination-options
+    ((combination t))
+  (slot-value combination 'mop::options))
 
 
-(defclass short-method-combination (standard-method-combination) ())
-(defclass long-method-combination (standard-method-combination) ())
 
+#|
+(in-package :mop)
+(defclass short-method-combination (method-combination-types::standard-method-combination)
+  ((operator :initarg :operator)
+   (identity-with-one-argument :initarg :identity-with-one-argument)))
 
+(defclass long-method-combination (method-combination-types::standard-method-combination)
+  ((sys::lambda-list :initarg :lambda-list)
+   (method-group-specs :initarg :method-group-specs)
+   (args-lambda-list :initarg :args-lambda-list)
+   (generic-function-symbol :initarg :generic-function-symbol)
+   (function :initarg :function)
+   (arguments :initarg :arguments)
+   (declarations :initarg :declarations)
+   (forms :initarg :forms)))
+|#
+
+(in-package :method-combination-types)
 ;; these are added in as meta classes
 (defclass method-combination-type (standard-class) ())
 (defclass standard-method-combination-type (method-combination-type)
@@ -135,6 +164,7 @@ found. Otherwise, return NIL."
       (when errorp
         (error "There is no method combination type named ~A." name))))
 
+
 (defmethod find-method-combination
     ((generic-function generic-function) name options)
   "Find a method combination object for type NAME and options.
@@ -154,6 +184,53 @@ The GENERIC-FUNCTION argument is ignored."
                 (funcall (method-combination-%constructor type)
 			 options))))))
 
+#|
+(defmethod find-method-combination
+    ((generic-function generic-function) name options)
+  ;; ABCL bug workaround:
+  ;; Sometimes OPTIONS is the method-combination-type object itself.
+  (format *error-output* "options: ~a" options)
+
+  (let ((type (or (find-method-combination-type name nil)
+                  (loop for key being the hash-keys of **method-combination-types**
+                        for value being the hash-values of **method-combination-types**
+                        when (string= (string key) (symbol-name name))
+                          return value))))
+    (when type
+      (let* ((opts (normalize-mc-options options))
+             (cache (method-combination-type-%cache type))
+             (cached (gethash opts cache)))
+        (or cached
+            (setf (gethash opts cache)
+                  (funcall (method-combination-%constructor type)
+opts)))))))
+|#
+
+
+#|
+(defmethod find-method-combination
+    ((generic-function null) name options)
+  ;; ABCL bug workaround:
+  ;; Sometimes OPTIONS is the method-combination-type object itself.
+  (format *error-output* "options: ~a" options)
+
+  (let ((type (or (find-method-combination-type name nil)
+                  (loop for key being the hash-keys of **method-combination-types**
+                        for value being the hash-values of **method-combination-types**
+                        when (string= (string key) (symbol-name name))
+                          return value))))
+    (when type
+      (let* ((opts (normalize-mc-options options))
+             (cache (method-combination-type-%cache type))
+             (cached (gethash opts cache)))
+        (or cached
+            (setf (gethash opts cache)
+                  (funcall (method-combination-%constructor type)
+                           opts)))))))
+|#
+
+
+
 (defmethod find-method-combination
     ((generic-function null) name options)
   "Find a method combination object for type NAME and options.
@@ -171,7 +248,8 @@ The GENERIC-FUNCTION argument is ignored."
        (or (gethash options (method-combination-type-%cache type))
           (setf (gethash options (method-combination-type-%cache type))
                 (funcall (method-combination-%constructor type)
-			 options))))))
+options))))))
+
 
 (defun find-method-combination* (name &optional options)
   (let ((type (find-method-combination-type name nil)))
@@ -229,6 +307,24 @@ The GENERIC-FUNCTION argument is ignored."
 
 |#
 
+(defmethod update-generic-function-for-redefined-method-combination
+    ((function generic-function)
+     (previous standard-method-combination)
+     (current standard-method-combination))
+  "Flush the effective method cache and reinitialize FUNCTION."
+  (flush-effective-method-cache function)
+  (reinitialize-instance function))
+
+(defmethod update-instance-for-different-class :after
+    ((previous standard-method-combination)
+     (current standard-method-combination)
+     &key &allow-other-keys)
+  "Inform every function using CURRENT method combination that it has changed."
+  (maphash
+   (lambda (gf _)
+     (update-generic-function-for-redefined-method-combination
+      gf previous current))
+   (method-combination-%generic-functions current)))
 
 (defun load-defcombin
     (name new documentation &aux (old (find-method-combination-type name nil)))
@@ -259,6 +355,23 @@ combination type."
   "Return method COMBINATION's type name."
   (method-combination-type-name (class-of combination)))
 
+(defmethod method-combination-type-name
+    ((combination method-combination))
+  "Return method COMBINATION's type name."
+  (method-combination-type-name (class-of combination)))
+
+
+(defmethod method-combination-name
+    ((combination method-combination))
+  "Return method COMBINATION's type name."
+  (method-combination-type-name (class-of combination)))
+
+
+(defmethod mop::method-combination-type-name
+    ((combination method-combination))
+  "Return method COMBINATION's type name."
+  (method-combination-type-name (class-of combination)))
+
 (defmethod method-combination-lambda-list
     ((combination standard-method-combination))
   "Return method COMBINATION's lambda-list."
@@ -280,6 +393,24 @@ combination type."
   "Return long method COMBINATION's args-lambda-list."
   (long-method-combination-type-%args-lambda-list (class-of combination)))
 
+(defmethod long-method-combination-function ((combination method-combination))
+  (long-method-combination-type-%function (class-of combination)))
+
+#|
+(defmethod long-method-combination-function ((x list))
+  (long-method-combination-type-%function (car method-combination)))
+|#
+
+(defun mop::long-method-combination-function (method-combination)
+  (method-combination-types::long-method-combination-type-%function (class-of method-combination)))
+
+(defmethod long-method-combination-function ((combination long-method-combination-type))
+  (long-method-combination-type-%function (class-of combination)))
+
+
+(defmethod method-function
+    ((combination long-method-combination-type))
+  (long-method-combination-type-%function combination))
 
 ;; ---------------------------
 ;; standard method combination
@@ -343,6 +474,8 @@ combination type."
                     :operator operator
                     :identity-with-one-argument identity-with-one-argument
                     (when (consp mct-spec) (cdr mct-spec)))))
+
+    #|
     (setf (slot-value new '%constructor)
           (lambda (options)
             (funcall #'make-instance
@@ -362,7 +495,23 @@ combination type."
 				    ((atom options)
 				     (list options))
 				    (t
-				     options)))))
+    options)))))
+    |#
+
+    
+    (setf (slot-value new '%constructor)
+      (lambda (&optional options)
+        (let* ((inst (make-instance new
+                                    :options (or options '(:most-specific-first)))))
+	  
+          ;; Sync: legacy operator slot for old ABCL code
+          (setf (slot-value inst 'mop::operator)
+                (short-method-combination-type-operator (class-of inst)))
+	  (setf (slot-value inst 'mop::identity-with-one-argument)
+		(short-method-combination-type-identity-with-one-argument (class-of inst)))
+          inst)))
+
+    
     (load-defcombin name new documentation)))
 
 
@@ -458,7 +607,26 @@ combination type."
 
 
 
+(defmethod slot-unbound
+    ((class t)
+     (obj method-combination-types:long-method-combination)
+     (slot-name (eql 'function)))
+  (format *error-output*
+          "~&[MC DEBUG] FUNCTION slot unbound on ~S (class ~S)~%"
+          obj (class-of obj))
+  (format *error-output* "~&---- ABCL BACKTRACE ----~%")
+  ;; Safely print a backtrace without interfering with ABCL's own error
+  (ignore-errors (sys::%backtrace *error-output*))
+  (format *error-output* "~&---- END BACKTRACE ----~%")
+  ;; Continue to normal UNBOUND-SLOT handler:
+  (call-next-method))
 
+#|
+(trace mop::long-method-combination-function)
+(trace mop::short-method-combination-operator)
+(trace mop::std-slot-value)
+(trace mop::std-compute-effective-method)
+|#
 
 (defun load-long-defcombin
     (name documentation function lambda-list args-lambda-list
@@ -478,7 +646,7 @@ combination type."
            mct-class))
   ;; Create the new method-combination-type instance
   (let ((new (apply #'make-instance mct-class
-		    :class-name nil ;;anonymous!!
+		    ;;:class-name nil ;;anonymous!!
 		    :metaclass mct-class
 		    
                     :direct-superclasses (list mc-class)
@@ -498,7 +666,9 @@ combination type."
     
     ;;(inspect debug)
     |#
-    
+
+
+    #|
     ;; install constructor
     (setf (slot-value new '%constructor)
           (lambda (options)
@@ -511,7 +681,25 @@ combination type."
 			       (list options))
 			      (t
 			       options))))))
+    |#
 
+    
+    (setf (slot-value new '%constructor)
+	  (lambda (&optional options)
+	    (format *error-output* "options: ~a" options)
+        (let* ((inst (apply #'make-instance new
+                            ;;:options options
+			    )))
+			    ;;:options options)))
+          ;; Sync: legacy slots for old ABCL code
+	  (setf (slot-value inst 'mop::options)
+		options)
+          (setf (slot-value inst 'mop::function)
+                (long-method-combination-type-%function (class-of inst)))
+          (setf (slot-value inst 'mop::arguments)
+                options)
+          inst)))
+    
 
     #| DEBUG
         (let ((class new))
@@ -539,16 +727,80 @@ combination type."
   (apply #'error 'program-error :format-control fmt :format-arguments args))
 
 
+#|
 (defmethod compute-effective-method
     ((function generic-function)
      (combination long-method-combination)
      applicable-methods)
   "Call the long method COMBINATION type's specific function."
   (funcall (long-method-combination-type-%function (class-of combination))
-    function combination applicable-methods))
+function combination applicable-methods))
+|#
+
+#|
+(defmethod mop::compute-effective-method
+    ((function generic-function)
+     (combination long-method-combination)
+     applicable-methods)
+  "Call the long method COMBINATION type's specific function."
+  (funcall (long-method-combination-type-%function (class-of combination))
+function combination applicable-methods))
+|#
+
+(defmethod compute-effective-method
+    ((gf generic-function)
+     (combination long-method-combination)
+     applicable-methods)
+  (funcall (long-method-combination-type-%function (class-of combination))
+           gf combination applicable-methods))
+
+
+(defmethod mop::compute-effective-method
+    ((gf generic-function)
+     (combination long-method-combination)
+     applicable-methods)
+  (funcall (long-method-combination-type-%function (class-of combination))
+           gf combination applicable-methods))
+
+(defmethod compute-effective-method
+    ((gf generic-function)
+     (combination method-combination-types::long-method-combination)
+     applicable-methods)
+  (funcall (long-method-combination-type-%function (class-of combination))
+           gf combination applicable-methods))
 
 
 (defun make-long-method-combination-function
+    (type-name lambda-list method-group-specifiers args-option gf-var body)
+  (declare (ignore type-name))
+  (multiple-value-bind (real-body declarations documentation)
+      (parse-body* body t)
+    (let ((wrapped-body
+            (wrap-method-group-specifier-bindings
+             method-group-specifiers declarations real-body)))
+      ;; optional 
+      (when gf-var
+        (push `(,gf-var .generic-function.) (cadr wrapped-body)))
+      ;; handle :arguments option
+      (when args-option
+        (setq wrapped-body
+              (deal-with-args-option wrapped-body args-option)))
+      ;; handle lambda-list wrapping
+      (when lambda-list
+        (setq wrapped-body
+              `(apply (lambda ,lambda-list ,wrapped-body)
+                      (method-combination-options .method-combination.))))
+      ;; Return documentation and function form
+      (values
+       documentation
+       `(lambda (.generic-function. .method-combination. .applicable-methods.)
+          (declare (ignorable .generic-function.
+                              .method-combination.
+                              .applicable-methods.))
+          (block .long-method-combination-function.
+            ,wrapped-body))))))
+
+(defun mop::%make-long-method-combination-function
     (type-name lambda-list method-group-specifiers args-option gf-var body)
   (declare (ignore type-name))
   (multiple-value-bind (real-body declarations documentation)
@@ -892,7 +1144,6 @@ combination type."
                            (frob optional no nopt values)
                            values)))))
 
-
 #|
 (defmacro with-single-package-locked-error (options &body body)
   "Just incase this needs to exist"
@@ -933,3 +1184,121 @@ affected generic functions."
              (setf (generic-function-method-combination gf) new))
            (slot-value new '%generic-functions)))
 |#
+
+(defun my-long-mc-instance-p (mc)
+  (typep (class-of mc) 'method-combination-types:long-method-combination-type))
+
+
+;; does nothing
+(defun std-compute-effective-method (gf method-combination methods)
+  (assert (typep method-combination 'method-combination))
+  (let* ((mc-name (or (method-combination-name method-combination)
+		      (method-combination-type-name method-combination)))
+	 ;; we cannot check the new system via name!!
+	 
+         (options (slot-value method-combination 'options))
+         (order (car options))
+         (primaries '())
+         (arounds '())
+         around
+         emf-form
+         (long-method-combination-p
+          (typep method-combination 'long-method-combination)))
+    (unless long-method-combination-p
+      (dolist (m methods)
+        (let ((qualifiers (method-qualifiers m)))
+          (cond ((null qualifiers)
+                 (if (eq mc-name 'standard)
+                     (push m primaries)
+                     (error "Method combination type mismatch: missing qualifier for method combination ~S." method-combination)))
+                ((cdr qualifiers)
+                 (error "Invalid method qualifiers: got a list."))
+                ((eq (car qualifiers) :around)
+                 (push m arounds))
+                ((eq (car qualifiers) mc-name)
+                 (push m primaries))
+                ((memq (car qualifiers) '(:before :after)))
+                (t
+                 (error "Invalid method qualifiers: std-compute-effective-method found no valid qualifiers..~% qualifiers = ~a~%mc-name = ~a~% m = ~a~%" qualifiers mc-name m))))))
+    (unless (eq order :most-specific-last)
+      (setf primaries (nreverse primaries)))
+    (setf arounds (nreverse arounds))
+    (setf around (car arounds))
+    (when (and (null primaries) (not long-method-combination-p))
+      (error "No primary methods for the generic function ~S." gf))
+    (cond
+      (around
+       (let ((next-emfun
+              (funcall
+               (if (std-generic-function-p gf)
+                   #'std-compute-effective-method
+                   #'compute-effective-method)
+               gf method-combination (remove around methods))))
+         (setf emf-form
+               (generate-emf-lambda (method-function around) next-emfun))))
+      ((eq mc-name 'standard)
+       (let* ((next-emfun (compute-primary-emfun (cdr primaries)))
+              (befores (remove-if-not #'before-method-p methods))
+              (reverse-afters
+               (reverse (remove-if-not #'after-method-p methods))))
+         (setf emf-form
+               (cond
+                 ((and (null befores) (null reverse-afters))
+                  (let ((fast-function (std-method-fast-function (car primaries))))
+                    (if fast-function
+                        (ecase (length (generic-function-required-arguments gf))
+                          (1
+                           #'(lambda (args)
+                               (declare (optimize speed))
+                               (funcall fast-function (car args))))
+                          (2
+                           #'(lambda (args)
+                               (declare (optimize speed))
+                               (funcall fast-function (car args) (cadr args)))))
+                        (generate-emf-lambda (std-method-function (car primaries))
+                                             next-emfun))))
+                 (t
+                  (let ((method-function (method-function (car primaries))))
+                    #'(lambda (args)
+                        (declare (optimize speed))
+                        (dolist (before befores)
+                          (funcall (method-function before) args nil))
+                        (multiple-value-prog1
+                            (funcall method-function args next-emfun)
+                          (dolist (after reverse-afters)
+                            (funcall (method-function after) args nil))))))))))
+      (long-method-combination-p
+       (error "~a" (my-long-mc-instance-p method-combination))
+       #++(if (my-long-mc-instance-p method-combination)
+	   (let ((fun (long-method-combination-function method-combination))
+             (setf emf-form
+		   (funcall fun gf method-combination methods))))
+
+	   ;; → Fall back to ABCL legacy behaviour
+	   (let ((fun (slot-value method-combination 'function))
+		 (args (slot-value method-combination 'arguments)))
+             (setf emf-form
+		   (if args
+                       (apply fun gf methods args)
+                       (funcall fun gf methods))))))
+
+
+
+
+      (t
+       #|
+       (unless (typep method-combination 'short-method-combination)
+         (error "Unsupported method combination type ~A." mc-name))|#
+       (let ((operator (short-method-combination-operator method-combination))
+             (ioa (short-method-combination-identity-with-one-argument method-combination)))
+         (setf emf-form
+               (if (and ioa (null (cdr primaries)))
+                   (generate-emf-lambda (method-function (car primaries)) nil)
+                   `(lambda (args)
+                      (,operator ,@(mapcar
+                                    (lambda (primary)
+                                      `(funcall ,(method-function primary) args nil))
+                                    primaries))))))))
+    (assert (not (null emf-form)))
+    (or #+nil (ignore-errors (autocompile emf-form))
+        (coerce-to-function emf-form))))

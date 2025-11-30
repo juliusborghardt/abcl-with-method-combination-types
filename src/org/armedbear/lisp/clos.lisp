@@ -949,13 +949,21 @@ Will not modify existing classes to avoid breaking std-generic-function-p."
 (define-primordial-class method-combination (metaobject)
   ((sys::name :initarg :name :initform nil)
    (sys::%documentation :initarg :documentation :initform nil)
-   (options :initarg :options :initform nil)))
+   (options :initarg :options :initform nil)
+   ))
 
-(define-primordial-class short-method-combination (method-combination)
+(define-primordial-class standard-method-combination (method-combination) 
+  (
+   ;;(options :initarg :options :initform nil)
+   (%generic-functions :initarg :generic-functions
+		       :initform (make-hash-table :test 'eq))
+   ))
+
+(define-primordial-class short-method-combination (standard-method-combination)
   ((operator :initarg :operator)
    (identity-with-one-argument :initarg :identity-with-one-argument)))
 
-(define-primordial-class long-method-combination (method-combination)
+(define-primordial-class long-method-combination (standard-method-combination)
   ((sys::lambda-list :initarg :lambda-list)
    (method-group-specs :initarg :method-group-specs)
    (args-lambda-list :initarg :args-lambda-list)
@@ -1524,6 +1532,7 @@ Will not modify existing classes to avoid breaking std-generic-function-p."
         :args-lambda-list (long-method-combination-args-lambda-list mc)
         :generic-function-symbol (long-method-combination-generic-function-symbol mc)
         :function (long-method-combination-function mc)
+	;;:function (long-method-combination-function (class-of mc))
         :arguments (long-method-combination-arguments mc)
         :declarations (long-method-combination-declarations mc)
         :forms (long-method-combination-forms mc)
@@ -2649,7 +2658,10 @@ to ~S with argument list ~S."
 
 (defun std-compute-effective-method (gf method-combination methods)
   (assert (typep method-combination 'method-combination))
-  (let* ((mc-name (method-combination-name method-combination))
+  (let* ((mc-name (or (method-combination-name method-combination)
+		      (method-combination-type-name method-combination)))
+	 ;; we cannot check the new system via name!!
+	 
          (options (slot-value method-combination 'options))
          (order (car options))
          (primaries '())
@@ -2666,14 +2678,14 @@ to ~S with argument list ~S."
                      (push m primaries)
                      (error "Method combination type mismatch: missing qualifier for method combination ~S." method-combination)))
                 ((cdr qualifiers)
-                 (error "Invalid method qualifiers."))
+                 (error "Invalid method qualifiers: got a list."))
                 ((eq (car qualifiers) :around)
                  (push m arounds))
                 ((eq (car qualifiers) mc-name)
                  (push m primaries))
                 ((memq (car qualifiers) '(:before :after)))
                 (t
-                 (error "Invalid method qualifiers."))))))
+                 (error "Invalid method qualifiers: std-compute-effective-method found no valid qualifiers..~% qualifiers = ~a~%mc-name = ~a~% m = ~a~%" qualifiers mc-name m))))))
     (unless (eq order :most-specific-last)
       (setf primaries (nreverse primaries)))
     (setf arounds (nreverse arounds))
@@ -2722,16 +2734,40 @@ to ~S with argument list ~S."
                           (dolist (after reverse-afters)
                             (funcall (method-function after) args nil))))))))))
       (long-method-combination-p
+       #|
+       (if (slot-exists-p method-combination 'function)
+	   ;; Legacy ABCL method-combination (boot-time or old system)
+	   (let ((fun  (slot-value method-combination 'function))
+		 (args (slot-value method-combination 'arguments)))
+             (setf emf-form
+		   (if args
+                       (apply fun gf methods args)
+                       (funcall fun gf methods))))
+	   
+	   ;; New Verna-style method combination
+	   ;; No ABCL package references; use method-combination-name as discriminator
+	   (let ((fun (long-method-combination-function method-combination)))
+             (setf emf-form
+       (funcall fun gf method-combination methods))))
+       |#
+
        (let ((function (long-method-combination-function method-combination))
              (arguments (slot-value method-combination 'options)))
          (assert function)
+	 (format *error-output* "~a" function)
+	 (format *error-output* "~a" arguments)
+	 (format *error-output* "~a" method-combination)
          (setf emf-form
                (if arguments
                    (apply function gf methods arguments)
-                   (funcall function gf methods)))))
+                   (funcall function gf method-combination methods)))))
+
+
+
       (t
+       #|
        (unless (typep method-combination 'short-method-combination)
-         (error "Unsupported method combination type ~A." mc-name))
+         (error "Unsupported method combination type ~A." mc-name))|#
        (let ((operator (short-method-combination-operator method-combination))
              (ioa (short-method-combination-identity-with-one-argument method-combination)))
          (setf emf-form
