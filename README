@@ -1,15 +1,17 @@
 This Repository is a modified version of ABCL, that implements Method Combination Types as proposed by Didier Verna in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
 
-It is part of ongoing work as part of a thesis by Julius Borghardt.
-This repo is work-in-progress.
+It is part of the bachelor's thesis titled "Implementation and application of method combinations for ERP-System development" by Julius Borghardt.
+This Repo is submitted for review and will receive no changes after November 30, 2025.
 
-To build it, clone the Repository and run Apache Ant (no configuration neccessary).
+To build it, clone the Repository and run Apache Ant in the /abcl folder (no configuration neccessary).
+> [jb@nixos:~/Documents/Lisp/ABCL/abcl]$ ant
 
-To test your build, run it using java -jar, then use
+
+To test your build, run it using 
+> java -jar dist/abcl.jar
+then use
 > :cl src/org/armedbear/lisp/combination-types-tests.lisp
-to load the test suite, and
-> (run-method-combination-tests)
-to run it.
+to load and run the test suite.
 
 
 
