@@ -3,7 +3,7 @@
 ;; in HAL Id: hal-04751233 https://hal.science/hal-04751233v1
 ;; adapted for ABCL by Julius Borghardt https://github.com/juliusborghardt
 
-(defpackage :method-combination-types
+#+nil(defpackage :method-combination-types
   (:use :cl :cl-user #-lispworks :mop #+lispworks :clos)
   (:import-from :mop
    :method-combination :short-method-combination

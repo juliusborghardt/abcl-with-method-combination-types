@@ -475,11 +475,12 @@
                            "with-package-iterator.lisp"
                            "with-slots.lisp"
                            "with-standard-io-syntax.lisp"
-                           "write-sequence.lisp"))
+                           "write-sequence.lisp"
+			   ))
 
 
       ;; MOP-BASED METHOD COMBINATIONS
-      (load (do-compile "combination-types-load.lisp"))
+      ;;(load (do-compile "combination-types-load.lisp"))
       ;;compile the loader file to install rc hook
       
             ;;; Classloader combine JAVA and THREADS abstractions
@@ -506,7 +507,9 @@
       (do-compile (merge-pathnames #p"autoloads-gen.lisp" output-path)
         :extract nil)
       (do-compile "autoloads.lisp"
-        :extract nil))
+        :extract nil)
+      (do-compile (load "combination-types.lisp"))
+      (do-compile (load "combination-types-init.lisp")))
     t))
 
 (defun compile-system (&key quit (zip t) (cls-ext *compile-file-class-extension*) (abcl-ext *compile-file-type*) output-path)

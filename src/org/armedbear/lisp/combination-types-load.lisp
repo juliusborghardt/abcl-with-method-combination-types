@@ -1,7 +1,7 @@
 ;; Part of the MOP-based method combination system implementation
 
 ;; *lisp-home* = #P"jar:file:///home/jb/Documents/Lisp/ABCL/abcl/dist/abcl.jar!/org/armedbear/lisp/"
-(defun abcl-source-directory ()
+#+nil(defun abcl-source-directory ()
   "find the full path to abcl/src/org/armedbear/lisp/."
   (let ((home (namestring *lisp-home*)))
     ;; running from jar
@@ -15,7 +15,7 @@
 
 
 
-(defun install-mc-init-file (&key (overwrite nil))
+#+nil(defun install-mc-init-file (&key (overwrite nil))
   "Install .abclrc with method combination loader"
   (let* ((dir (abcl-source-directory)) 
          (package-file (merge-pathnames "combination-types-package.lisp" dir))
@@ -33,7 +33,7 @@
         (format out "(format t \"[Combination Types] Loading method combination system...~%\")~%")
 
 	;;just the defpackage
-        (format out "(load ~S)~%" (namestring package-file))
+        (format out "(load ~S)~%" (namestring package-file))(load "combination-types.lisp")
 
 	;;the full implementation
         (format out "(load ~S)~%" (namestring impl-file))
@@ -47,6 +47,7 @@
 
 
 
-(install-mc-init-file :overwrite t)
+;;(install-mc-init-file :overwrite t)
+
 
 
