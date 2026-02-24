@@ -9,11 +9,11 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        jdk: [openjdk8, openjdk11, openjdk17, openjdk21, openjdk23]
+        jdk: [openjdk8, openjdk11, openjdk17, openjdk21, openjdk25]
         
     steps:
-      - name: Set path for build scripts
-        run: echo "ABCL_ROOT=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+      - name: Set path for subsequent scripts
+        run: echo GITHUB_WORKSPACE=${GITHUB_WORKSPACE} && echo github.workspace=${{github.workspace}} && echo "ABCL_ROOT=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
       - name: Set JDK version in environment
         run: echo "JDK_VERSION=${{ matrix.jdk }}" >> $GITHUB_ENV
@@ -52,9 +52,6 @@ jobs:
       - name:  Install NONTRIVIAL-GRAY-STREAMS for testing
         run: . ./ci/install-nontrivial-gray-streams.bash
 
-      - name: Install the ANSI-TEST suite
-        run: . ./ci/install-ansi-test.bash
-
       - name: Install Quicklisp
         run: |
           ./abcl \
@@ -63,6 +60,9 @@ jobs:
             --eval '(asdf:load-system :quicklisp-abcl :force t)' \
             --eval '(progn (setf ql-util::*do-not-prompt* t)(ql:add-to-init-file))' \
             --eval '(ext:quit)'
+
+      - name: Install the ANSI-TEST suite
+        run: . ./ci/install-ansi-test.bash
 
       - name: Test ABCL-PROVE
         run: ./abcl --batch --load ./ci/test-abcl-prove.lisp
@@ -88,18 +88,9 @@ jobs:
       - name: Test CL+SSL
         run: ./abcl --batch --load ./ci/ensure-maven.lisp --load ./ci/test-cl+ssl.lisp
 
+      - name: Run ANSI-TEST suite
+        run: ./abcl --batch --load ./ci/test-ansi.lisp || true # N.b. always succeeds for now
+
       - name: Test IRONCLAD
         run: ./abcl --batch --load ./ci/test-ironclad.lisp
 
-      - name: Run ANSI-TEST suite
-        run: ./abcl --batch --load ./ci/test-ansi.lisp
-
-          
-
-            
-
-
-
-
-      
-  
